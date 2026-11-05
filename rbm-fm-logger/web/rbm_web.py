@@ -244,8 +244,13 @@ def ffmpeg_join(parts):
 # --- HTTP ------------------------------------------------------------------------
 
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
-                ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml"}
-STATIC_FILES = {"/": "index.html", "/app.css": "app.css", "/app.js": "app.js"}
+                ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml",
+                ".webmanifest": "application/manifest+json", ".png": "image/png"}
+# A fixed list: the browser can never ask for any other file.
+STATIC_FILES = {"/": "index.html", "/app.css": "app.css", "/app.js": "app.js",
+                "/sw.js": "sw.js", "/manifest.webmanifest": "manifest.webmanifest",
+                "/icons/icon-180.png": "icons/icon-180.png", "/icons/icon-192.png": "icons/icon-192.png",
+                "/icons/icon-512.png": "icons/icon-512.png"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -371,7 +376,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.common_headers()
         self.send_header("Content-Type", STATIC_TYPES[Path(name).suffix])
-        self.send_header("Cache-Control", "no-cache")
+        # Icons rarely change; everything else is revalidated so updates show at once.
+        self.send_header("Cache-Control", "public, max-age=604800" if name.startswith("icons/") else "no-cache")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)

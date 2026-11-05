@@ -33,6 +33,7 @@ function zap() { [220, 440, 880, 1760, 3520].forEach((f, i) => setTimeout(() => 
 
 // ---------- Login ----------
 function showLogin() {
+  $("offline").hidden = true;
   // Start from a clean vault: no leftover "ACCESS GRANTED", nothing still playing.
   if (typeof setPlaying === "function" && player.playing) setPlaying(false);
   const msg = $("login-msg"); msg.textContent = ""; msg.className = "msg";
@@ -40,7 +41,20 @@ function showLogin() {
   $("password").value = "";
   $("console").hidden = true; $("login").hidden = false; $("password").focus();
 }
-function showConsole() { $("login").hidden = true; $("console").hidden = false; loadCoverage(); }
+function showConsole() { $("offline").hidden = true; $("login").hidden = true; $("console").hidden = false; loadCoverage(); }
+// Shown when the server can't be reached at all (offline, or the logger is down).
+function showUnreachable() {
+  if (!$("console").hidden || !$("login").hidden) return;  // Keep what's already on screen.
+  $("offline").textContent = navigator.onLine
+    ? "Can't reach the vault right now. It may be restarting; this page will retry by itself."
+    : "You're offline. The vault will open as soon as you're back online.";
+  $("offline").hidden = false;
+}
+function connect() {
+  api(`/api/coverage?date=${state.date}`).then(showConsole).catch((err) => {
+    if (err.message !== "login") { showUnreachable(); setTimeout(connect, 15000); }
+  });
+}
 
 $("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -470,6 +484,15 @@ addEventListener("keydown", (e) => {
   if (kpos === konami.length) { kpos = 0; document.body.classList.toggle("disco"); zap(); burst(innerWidth / 2, innerHeight / 3, 400); }
 });
 
+// ---------- Installable app (PWA) ----------
+// The service worker only makes the page installable and lets it open offline; it never
+// caches logins, recordings or downloads.
+if ("serviceWorker" in navigator) {
+  addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+}
+addEventListener("offline", () => status("You're offline. The vault needs a connection to play or download.", true));
+addEventListener("online", () => { status("Back online."); if (!$("console").hidden) loadCoverage(); else connect(); });
+
 // ---------- Start ----------
 (function init() {
   // Default to the most recent complete hour.
@@ -478,5 +501,5 @@ addEventListener("keydown", (e) => {
   state.date = last < 0 ? shiftDate(localToday(), -1) : localToday();
   $("date").value = state.date;
   updateReadouts();
-  api(`/api/coverage?date=${state.date}`).then(showConsole).catch(() => {});
+  connect();
 })();

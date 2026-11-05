@@ -21,6 +21,13 @@ A password-protected web page where presenters can listen to, or download, any s
 
 All times are Blue Mountains local time.
 
+**Install it as an app** (optional). It then opens in its own window with the RBM Vault icon, and works with the phone's lock-screen and headphone media controls:
+- **iPhone/iPad (Safari):** Share → **Add to Home Screen**.
+- **Android (Chrome):** the **Install app** prompt, or ⋮ → **Add to Home screen**.
+- **Windows/Mac (Chrome or Edge):** the install icon at the right of the address bar.
+
+The app still needs a connection to play or download. Offline, it opens and says so, and reconnects by itself.
+
 ## How it works
 
 ```
@@ -31,6 +38,7 @@ Presenter ──https──> Cloudflare proxy ──https :8443──> routers �
 - **Listening** streams the original recording files one after another, with HTTP range requests so seeking is instant. Nothing is converted.
 - **Downloading** joins the files for the range with ffmpeg. Where every file has the same format (all 48 kHz logger files, or all 44.1 kHz streamer files), the audio is copied unchanged and a 6-hour file takes seconds. A range crossing between the two formats is converted to 48 kHz, for that download only.
 - Where two recordings overlap (for example, the streamer and logger copies on 5 Nov 2026), each one is used only up to where the next starts, so nothing plays twice.
+- **Installable app (PWA):** `manifest.webmanifest` and the service worker `sw.js` make the page installable. The service worker caches only the page itself (HTML, CSS, JS, icons), always fetching fresh copies when online. It **never caches anything under `/api/`**, so logins, recordings and downloads always come from the server. After changing the page's files, bump `CACHE` in `sw.js` (`rbm-vault-shell-vN`) so installed copies drop their old cache.
 - The timeline comes from the files' actual sizes, so a truncated recording shows only what really exists. Files under 5 seconds are ignored.
 
 ### Protecting the recorder

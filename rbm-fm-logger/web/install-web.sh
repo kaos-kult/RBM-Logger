@@ -14,9 +14,10 @@ id -u rbmweb &>/dev/null || useradd --system --no-create-home --home-dir /nonexi
   --shell /usr/sbin/nologin rbmweb
 usermod -aG rbmlogger rbmweb
 
-install -d -m 0755 /usr/local/lib/rbm-web /usr/local/lib/rbm-web/static
+install -d -m 0755 /usr/local/lib/rbm-web /usr/local/lib/rbm-web/static /usr/local/lib/rbm-web/static/icons
 install -m 0755 rbm_web.py rbm_web_check.py /usr/local/lib/rbm-web/
-install -m 0644 static/index.html static/app.css static/app.js /usr/local/lib/rbm-web/static/
+install -m 0644 static/index.html static/app.css static/app.js static/sw.js static/manifest.webmanifest /usr/local/lib/rbm-web/static/
+install -m 0644 static/icons/*.png /usr/local/lib/rbm-web/static/icons/
 install -m 0644 rbm-web.service rbm-web-check.service rbm-web-check.timer /etc/systemd/system/
 
 if [[ ! -f /etc/rbm-web.conf ]]; then
