@@ -13,9 +13,9 @@ A password-protected web page where presenters can listen to, or download, any s
 
 ## For presenters
 
-1. Open the address and enter the presenter password. You stay logged in on that device for 30 days. **LOCK** logs out.
+1. Open the address and enter the presenter password. You stay logged in on that device for 30 days. The **🔒** padlock button locks the vault (logs out).
 2. Choose the **broadcast date**. The strip shows that day from midnight to 06:00 the next morning: green is recorded, red hatching is missing.
-3. **Click a show** in the gold row along the top of the strip to select exactly that show. Or drag across the strip to choose any range, or set **START** and **END** precisely by turning the dials (one turn = 2 hours, 5-minute clicks; hold Shift for 1-minute steps) or typing the times. An end earlier than the start means the next day, so 23:00–01:00 works.
+3. **Click a show** in the gold row along the top of the strip to select exactly that show (names too long for their box scroll). Or drag across the strip to choose any range, or set **START** and **END** precisely by turning the dials (one turn = 2 hours, 5-minute clicks; hold Shift for 1-minute steps) or typing the times. An end earlier than the start means the next day, so 23:00–01:00 works.
 4. **▶ LISTEN** plays the range in the browser, with a scrub bar, skip buttons and a clock showing when it went to air. Missing stretches are skipped automatically.
 5. **DOWNLOAD** saves the range as one MP3, up to 6 hours long, after a short and entirely unnecessary cassette ceremony: a tape is labelled, stamped and ejected. Click or press any key to skip it; the download never waits for it.
    - If the range is essentially one show (at least 80% overlap both ways), the file is named after it, for example `RBMFM_Strange-Brew-Breakfast_20261105_0700-0900.mp3`. Otherwise it's named by time, for example `RBMFM_20261105T0700-20261105T0930.mp3`.
@@ -23,7 +23,7 @@ A password-protected web page where presenters can listen to, or download, any s
 
 **Show names** come from the station's programme guide (see [Programme guide](#programme-guide)). A name with **"probably"**, a `~` and a dashed outline is a guess from a later schedule: the show that is in that slot now, which may not be what was on that day. Overnight hours have no names, because there's no local programming then (that's usually the Community Radio Network).
 
-**On studio computers whose audio goes to air:** tap the **🔊** button next to LOCK so it shows **🔇**. That mutes the page's **sound effects** (the clicks, zaps, and the cassette's thud and whoosh) on that computer only, and it's remembered. **Listening still works normally,** so cue it to the monitors before pressing play. Clearing the browser's cookies turns the effects back on. An admin can also run `rbmMuteEffects()` or `rbmUnmuteEffects()` in the browser's developer console.
+**On studio computers whose audio goes to air:** tap the **🔊** button next to the 🔒 padlock so it shows **🔇**. That mutes the page's **sound effects** (the clicks, zaps, and the cassette's thud and whoosh) on that computer only, and it's remembered. **Listening still works normally,** so cue it to the monitors before pressing play. Clearing the browser's cookies turns the effects back on. An admin can also run `rbmMuteEffects()` or `rbmUnmuteEffects()` in the browser's developer console.
 
 All times are Blue Mountains local time.
 

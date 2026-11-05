@@ -113,7 +113,7 @@ async function loadCoverage() {
     ]);
     if (date !== state.date) return;  // The date changed while loading.
     state.spans = data.spans; state.maxHours = data.max_hours; state.shows = guide.shows;
-    drawTimeline(); updateReadouts();
+    drawTimeline(); updateReadouts(); startMarquee();
   } catch (err) { if (err.message !== "login") status(err.message, true); }
 }
 function setDate(iso) { state.date = iso; $("date").value = iso; loadCoverage(); }
@@ -128,7 +128,9 @@ const SHOW_BAND = 22;  // Height of the programme-guide row at the top of the st
 const tl = $("timeline");
 $("hours").innerHTML = [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30]
   .map((h) => `<span class="${h > 24 ? "next" : ""}">${pad(h % 24)}</span>`).join("");
+let marqueeActive = false, marqueeRunning = false;
 function drawTimeline() {
+  marqueeActive = false;
   const dpr = devicePixelRatio || 1, w = tl.clientWidth, h = tl.clientHeight;
   tl.width = w * dpr; tl.height = h * dpr;
   const g = tl.getContext("2d"); g.scale(dpr, dpr);
@@ -154,9 +156,21 @@ function drawTimeline() {
     g.strokeStyle = "rgba(255,204,51,0.8)"; g.lineWidth = 1;
     if (show.probable) g.setLineDash([3, 3]);
     g.strokeRect(a + 0.5, 2.5, b - a - 1, SHOW_BAND - 3); g.setLineDash([]);
-    if (b - a > 26) {
+    if (b - a > 14) {
+      const label = (show.probable ? "~ " : "") + show.name, room = b - a - 8, textW = g.measureText(label).width;
       g.save(); g.beginPath(); g.rect(a + 3, 0, b - a - 6, SHOW_BAND); g.clip();
-      g.fillStyle = "#ffe9a8"; g.fillText((show.probable ? "~ " : "") + show.name, a + 4, SHOW_BAND / 2 + 1);
+      g.fillStyle = "#ffe9a8";
+      if (textW <= room) {
+        g.fillText(label, a + 4, SHOW_BAND / 2 + 1);
+      } else {
+        // Too long for its box: scroll it like a marquee, with a pause at the start.
+        const gap = 28, cycle = textW + gap, speed = 30;  // pixels per second
+        const t = (performance.now() / 1000) * speed % (cycle + speed * 1.5);
+        const shift = Math.max(0, t - speed * 1.5);
+        g.fillText(label, a + 4 - shift, SHOW_BAND / 2 + 1);
+        g.fillText(label, a + 4 - shift + cycle, SHOW_BAND / 2 + 1);
+        marqueeActive = true;
+      }
       g.restore();
     }
   }
@@ -177,6 +191,14 @@ function drawTimeline() {
   g.shadowBlur = 0;
 }
 addEventListener("resize", drawTimeline);
+
+// Keep redrawing while any show name is scrolling, at about 30 frames a second.
+function marqueeTick() {
+  if (!marqueeActive || $("console").hidden) { marqueeRunning = false; return; }
+  drawTimeline();
+  setTimeout(() => requestAnimationFrame(marqueeTick), 33);
+}
+const startMarquee = () => { if (marqueeActive && !marqueeRunning) { marqueeRunning = true; requestAnimationFrame(marqueeTick); } };
 
 let dragFrom = null, dragMoved = false;
 const showAt = (m) => state.shows.find((s) => m >= s.from && m < s.to);
@@ -271,7 +293,7 @@ function updateReadouts() {
   $("download").disabled = over; $("audition").disabled = over;
   $("marquee").textContent = `★ ${state.date} ★ ${hhmm(state.start)} → ${hhmm(state.end)} ★ ${$("duration").textContent} OF PURE RADIO ★`;
 }
-function updateAll() { updateReadouts(); drawTimeline(); }
+function updateAll() { updateReadouts(); drawTimeline(); startMarquee(); }
 
 // The show this selection is essentially a recording of (same 80% rule as the server).
 function matchedShow() {

@@ -155,7 +155,7 @@ main { max-width: 980px; margin: 18px auto 30px; padding: 0 16px; }
 .readout small { display: block; color: var(--dim); min-height: 1.2em; }
 .readout .show-note { color: var(--gold); font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; font-size: 0.95rem;
   text-shadow: 0 0 8px rgba(255,204,51,0.5); }
-.sfx { padding: 8px 10px; font-size: 1rem; line-height: 1; }
+.icon-btn { padding: 8px 10px; font-size: 1.15rem; line-height: 1; letter-spacing: 0; }
 .sfx.muted { border-color: var(--red); box-shadow: 0 0 10px rgba(255,51,85,0.5); }
 
 .actions { margin-top: 6px; gap: 20px; }
