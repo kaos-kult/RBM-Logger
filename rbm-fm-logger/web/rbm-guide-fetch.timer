@@ -1,0 +1,12 @@
+[Unit]
+Description=Save the RBM programme guide daily
+
+[Timer]
+OnCalendar=*-*-* 04:20:00
+OnBootSec=3min
+Persistent=true
+RandomizedDelaySec=10min
+Unit=rbm-guide-fetch.service
+
+[Install]
+WantedBy=timers.target

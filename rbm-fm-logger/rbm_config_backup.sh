@@ -56,7 +56,7 @@ paths=(
   /etc/hostname /etc/hosts /etc/network/interfaces /etc/network/interfaces.d
   /etc/timezone /etc/localtime /etc/sudoers.d
   /home/logger/.ssh /home/logger/rbm-fm-logger /home/logger/rbm-web
-  /var/lib/rbm-logger /var/lib/rbm-web-check
+  /var/lib/rbm-logger /var/lib/rbm-web-check /var/lib/rbm-guide
 )
 existing=()
 for p in "${paths[@]}"; do [[ -e $p ]] && existing+=("$p"); done

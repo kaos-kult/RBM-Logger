@@ -123,13 +123,14 @@ main { max-width: 980px; margin: 18px auto 30px; padding: 0 16px; }
 .timeline-wrap { margin: 22px 0 8px; }
 .timeline-hours { display: flex; justify-content: space-between; font-family: ui-monospace, Menlo, monospace;
   font-size: 0.7rem; color: var(--dim); padding: 0 2px 4px; }
-#timeline { width: 100%; height: 90px; display: block; border-radius: 12px; cursor: crosshair; touch-action: none;
+#timeline { width: 100%; height: 104px; display: block; border-radius: 12px; cursor: crosshair; touch-action: none;
   border: 1px solid var(--edge); box-shadow: 0 0 24px rgba(57,255,136,0.18); background: #030107; }
 .timeline-hours .next { color: var(--cyan); }
 .legend { font-size: 0.8rem; color: var(--dim); text-align: center; margin: 8px 0 0; }
 .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin: 0 4px 0 10px; }
 .sw-rec { background: var(--green); box-shadow: 0 0 8px var(--green); }
 .sw-gap { background: repeating-linear-gradient(45deg, var(--red) 0 3px, transparent 3px 6px); }
+.sw-show { background: rgba(255,204,51,0.3); border: 1px solid var(--gold); }
 .sw-sel { background: var(--pink); box-shadow: 0 0 8px var(--pink); }
 
 .knobs { margin: 22px 0; gap: 22px; align-items: stretch; }
@@ -152,6 +153,10 @@ main { max-width: 980px; margin: 18px auto 30px; padding: 0 16px; }
 .readout { grid-column: 1 / -1; text-align: center; font-family: ui-monospace, Menlo, monospace; }
 .readout span { font-size: 2.6rem; color: var(--gold); text-shadow: 0 0 14px var(--gold); }
 .readout small { display: block; color: var(--dim); min-height: 1.2em; }
+.readout .show-note { color: var(--gold); font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; font-size: 0.95rem;
+  text-shadow: 0 0 8px rgba(255,204,51,0.5); }
+.sfx { padding: 8px 10px; font-size: 1rem; line-height: 1; }
+.sfx.muted { border-color: var(--red); box-shadow: 0 0 10px rgba(255,51,85,0.5); }
 
 .actions { margin-top: 6px; gap: 20px; }
 

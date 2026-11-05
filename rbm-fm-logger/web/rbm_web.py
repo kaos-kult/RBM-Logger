@@ -56,6 +56,9 @@ BYTES_PER_SECOND = 192000 / 8  # All archive audio is 192 kbps CBR; good enough 
 FILE_NAME = re.compile(r"^RBMFM_(\d{8}T\d{6}[+-]\d{4})\.mp3$")
 MIN_RECORDING_SECONDS = 5  # Shorter files are restart fragments or junk; leave them off the timeline.
 MAX_FAILS, LOCKOUT_SECONDS = 5, 900
+GUIDE_DIR = Path(os.environ.get("WEB_GUIDE_DIR", "/var/lib/rbm-guide"))
+# A download is named after a show when the range and the show overlap this much.
+SHOW_MATCH = 0.8
 NTFY_URL = os.environ.get("NTFY_URL", "")
 NTFY_TOKEN = os.environ.get("NTFY_TOKEN", "")
 ALERT_REPEAT_SECONDS = 3600
@@ -211,6 +214,88 @@ def coverage(day):
     return [[round(lo, 2), round(hi, 2)] for lo, hi in spans]
 
 
+# --- Programme guide ---------------------------------------------------------------
+# rbm_guide_fetch.py saves the station's weekly guide every day. A date inside a
+# snapshot's week gets exact show names; any other date borrows the weekly pattern from
+# the nearest snapshot and marks it "probably". Overnight hours have no local shows.
+
+guide_cache = {"mtime": None, "snapshots": []}
+guide_lock = threading.Lock()
+
+
+def guide_snapshots():
+    """[(snapshot_date, [show, ...]), ...] oldest first, reloaded when a file changes."""
+    with guide_lock:
+        try:
+            files = sorted(GUIDE_DIR.glob("guide-*.json"))
+            mtime = max((f.stat().st_mtime for f in files), default=None), len(files)
+        except OSError:
+            return []
+        if mtime != guide_cache["mtime"]:
+            snapshots = []
+            for f in files:
+                try:
+                    shows = json.loads(f.read_text())
+                    day = dt.datetime.strptime(f.stem.removeprefix("guide-"), "%Y%m%d").date()
+                    for show in shows:
+                        show["_start"] = parse_local(show["start"])
+                        show["_end"] = parse_local(show["end"])
+                    snapshots.append((day, shows))
+                except (OSError, ValueError, KeyError) as exc:
+                    log.warning("Skipping guide snapshot %s: %s", f.name, exc)
+            guide_cache.update(mtime=mtime, snapshots=snapshots)
+        return guide_cache["snapshots"]
+
+
+def shows_between(start, end):
+    """Shows overlapping start..end: [{name, presenter, url, start, end, probable, schedule}]."""
+    snapshots = guide_snapshots()
+    if not snapshots:
+        return []
+    found, covered_days = {}, set()
+    # Exact: the newest snapshot that actually lists each show at that moment.
+    for day, shows in snapshots:
+        for show in shows:
+            covered_days.add(show["_start"].date())
+            if show["_end"] > start and show["_start"] < end:
+                found[show["_start"]] = dict(show, probable=False, schedule=f"{day:%-d %b %Y}")
+    # Probable: days no snapshot covers take their weekday's shows from the nearest snapshot.
+    day = start.date()
+    while dt.datetime.combine(day, dt.time(), TZ) < end:
+        if day not in covered_days:
+            snap_day, shows = min(snapshots, key=lambda sn: abs((sn[0] - day).days))
+            for show in shows:
+                if show["_start"].weekday() != day.weekday():
+                    continue
+                offset = day - show["_start"].date()
+                s_start = dt.datetime.combine(show["_start"].date() + offset, show["_start"].time(), TZ)
+                s_end = s_start + (show["_end"] - show["_start"])
+                if s_end > start and s_start < end and s_start not in found:
+                    found[s_start] = dict(show, _start=s_start, _end=s_end, probable=True,
+                                          schedule=f"{snap_day:%b %Y}")
+        day += dt.timedelta(days=1)
+    return [found[k] for k in sorted(found)]
+
+
+def show_for_range(start, end):
+    """The one show this range is essentially a recording of, or None."""
+    best, best_overlap = None, 0.0
+    for show in shows_between(start, end):
+        overlap = (min(end, show["_end"]) - max(start, show["_start"])).total_seconds()
+        if overlap > best_overlap:
+            best, best_overlap = show, overlap
+    if not best:
+        return None
+    length = (end - start).total_seconds()
+    show_length = (best["_end"] - best["_start"]).total_seconds()
+    return best if best_overlap >= SHOW_MATCH * length and best_overlap >= SHOW_MATCH * show_length else None
+
+
+def slug(text):
+    text = re.sub(r"['’]", "", text)  # "Pro's & Con's" -> "Pros-Cons", not "Pro-s-Con-s".
+    return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-")[:60] or "Show"
+
+
 def parse_local(text):
     """'2026-11-05T20:00' (station local) -> aware datetime."""
     return dt.datetime.strptime(text, "%Y-%m-%dT%H:%M").replace(tzinfo=TZ)
@@ -248,6 +333,7 @@ STATIC_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=
                 ".webmanifest": "application/manifest+json", ".png": "image/png"}
 # A fixed list: the browser can never ask for any other file.
 STATIC_FILES = {"/": "index.html", "/app.css": "app.css", "/app.js": "app.js",
+                "/cassette.css": "cassette.css", "/cassette.js": "cassette.js",
                 "/sw.js": "sw.js", "/manifest.webmanifest": "manifest.webmanifest",
                 "/icons/icon-180.png": "icons/icon-180.png", "/icons/icon-192.png": "icons/icon-192.png",
                 "/icons/icon-512.png": "icons/icon-512.png"}
@@ -326,6 +412,16 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/audio":
                 return self.audio(parse_local(query["start"]), parse_local(query["end"]),
                                   query.get("download") == "1", query.get("check") == "1")
+            if url.path == "/api/shows":
+                day = dt.date.fromisoformat(query["date"])
+                day_start = dt.datetime.combine(day, dt.time(), TZ)
+                # Same window as the timeline: midnight to 06:00 the next day.
+                shows = shows_between(day_start, day_start + dt.timedelta(hours=30))
+                return self.send_json(HTTPStatus.OK, {"date": day.isoformat(), "shows": [{
+                    "name": sh["name"], "presenter": sh["presenter"], "url": sh["url"],
+                    "from": round((sh["_start"] - day_start).total_seconds() / 60, 2),
+                    "to": round((sh["_end"] - day_start).total_seconds() / 60, 2),
+                    "probable": sh["probable"], "schedule": sh["schedule"]} for sh in shows]})
             if url.path == "/api/segments":
                 return self.segments(parse_local(query["start"]), parse_local(query["end"]))
             if url.path == "/api/file":
@@ -446,9 +542,12 @@ class Handler(BaseHTTPRequestHandler):
         parts = pieces(start, end)
         if not parts:
             return self.send_json(HTTPStatus.NOT_FOUND, {"error": "nothing recorded in that range"})
+        show = show_for_range(start, end)
         if check_only:
-            return self.send_json(HTTPStatus.OK, {"requested": requested,
-                                                  "covered": sum(b - a for _, a, b in parts)})
+            return self.send_json(HTTPStatus.OK, {
+                "requested": requested, "covered": sum(b - a for _, a, b in parts),
+                "show": show and {"name": show["name"], "presenter": show["presenter"],
+                                  "probable": show["probable"], "schedule": show["schedule"]}})
         if not jobs.acquire(blocking=False):
             return self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "busy, try again shortly"})
         proc = tmp = None
@@ -457,7 +556,11 @@ class Handler(BaseHTTPRequestHandler):
             covered = sum(b - a for _, a, b in parts)
             # Say so in the file name too, so a saved file can't pass as complete.
             incomplete = "_INCOMPLETE" if covered < requested - 5 else ""
-            name = f"RBMFM_{start:%Y%m%dT%H%M}-{end:%Y%m%dT%H%M}{incomplete}.mp3"
+            if show:
+                # e.g. RBMFM_Strange-Brew-Breakfast_20261105_0700-0900.mp3
+                name = f"RBMFM_{slug(show['name'])}_{start:%Y%m%d_%H%M}-{end:%H%M}{incomplete}.mp3"
+            else:
+                name = f"RBMFM_{start:%Y%m%dT%H%M}-{end:%Y%m%dT%H%M}{incomplete}.mp3"
             self.send_response(HTTPStatus.OK)
             self.common_headers()
             self.send_header("Content-Type", "audio/mpeg")

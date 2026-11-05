@@ -4,8 +4,8 @@
 // show up at once) and only served from the cache when offline. Nothing under /api/ is
 // ever cached: logins, recordings and downloads always go to the server.
 
-const CACHE = "rbm-vault-shell-v2";
-const SHELL = ["/", "/app.css", "/app.js", "/manifest.webmanifest",
+const CACHE = "rbm-vault-shell-v3";
+const SHELL = ["/", "/app.css", "/app.js", "/cassette.css", "/cassette.js", "/manifest.webmanifest",
                "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-180.png"];
 
 self.addEventListener("install", (event) => {

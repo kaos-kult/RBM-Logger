@@ -14,7 +14,9 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/icon-180.png">
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="cassette.css">
 <script src="app.js" defer></script>
+<script src="cassette.js" defer></script>
 </head>
 <body>
 <canvas id="sky" aria-hidden="true"></canvas>
@@ -55,12 +57,13 @@
       </label>
       <button class="btn btn-small" id="next-day" aria-label="Next day">▶</button>
       <button class="btn btn-small" id="logout">LOCK</button>
+      <button class="btn btn-small sfx" id="sfx" type="button">🔊</button>
     </div>
 
     <div class="timeline-wrap">
       <div class="timeline-hours" id="hours" aria-hidden="true"></div>
-      <canvas id="timeline" height="90" aria-label="Recorded coverage for the day. Drag to select a range."></canvas>
-      <p class="legend"><span class="sw sw-rec"></span> recorded <span class="sw sw-gap"></span> no recording <span class="sw sw-sel"></span> your selection · drag across the strip to choose</p>
+      <canvas id="timeline" height="104" aria-label="Recorded coverage for the day. Drag to select a range."></canvas>
+      <p class="legend"><span class="sw sw-show"></span> show (click to select; dashed = probably) <span class="sw sw-rec"></span> recorded <span class="sw sw-gap"></span> no recording <span class="sw sw-sel"></span> your selection · or drag across the strip</p>
     </div>
 
     <div class="row knobs">
@@ -73,7 +76,7 @@
       <div class="vu-unit">
         <div class="vu"><canvas id="vu-l" width="220" height="130"></canvas><span>L</span></div>
         <div class="vu"><canvas id="vu-r" width="220" height="130"></canvas><span>R</span></div>
-        <div class="readout"><span id="duration">--:--</span><small id="duration-note"></small></div>
+        <div class="readout"><span id="duration">--:--</span><small id="duration-note"></small><small id="show-note" class="show-note"></small></div>
       </div>
 
       <div class="knob-unit">

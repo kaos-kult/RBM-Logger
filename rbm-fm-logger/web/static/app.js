@@ -4,7 +4,7 @@
 
 const $ = (id) => document.getElementById(id);
 const STEP = 5;
-const state = { date: "", start: 0, end: 60, spans: [], maxHours: 6 };
+const state = { date: "", start: 0, end: 60, spans: [], shows: [], maxHours: 6 };
 const pad = (n) => String(n).padStart(2, "0");
 const hhmm = (m) => `${pad(Math.floor(((m % 1440) + 1440) % 1440 / 60))}:${pad(((m % 60) + 60) % 60)}`;
 const clampMin = (m) => ((Math.round(m) % 1440) + 1440) % 1440;
@@ -19,9 +19,32 @@ async function api(path, options = {}) {
 }
 
 // ---------- Sound effects (synthesised, no files) ----------
+// Sound effects (clicks, zaps, the cassette's thud) can be switched off per device, e.g.
+// on studio computers whose audio goes to air. Remembered in a cookie; clearing cookies,
+// or running rbmUnmuteEffects() in the console, turns them back on. Listening is unaffected.
+window.rbmSoundEffectsOn = () => !/(?:^|;\s*)rbm_sfx=off/.test(document.cookie);
+function setSoundEffects(on) {
+  const secure = location.protocol === "https:" ? "; Secure" : "";  // Local testing is plain HTTP.
+  document.cookie = on ? `rbm_sfx=; Max-Age=0; Path=/; SameSite=Strict${secure}`
+                       : `rbm_sfx=off; Max-Age=315360000; Path=/; SameSite=Strict${secure}`;
+  showSfxState();
+  return on ? "Sound effects ON for this device." : "Sound effects OFF for this device (listening still works).";
+}
+window.rbmMuteEffects = () => setSoundEffects(false);
+window.rbmUnmuteEffects = () => setSoundEffects(true);
+function showSfxState() {
+  const on = rbmSoundEffectsOn(), b = $("sfx");
+  if (!b) return;
+  b.textContent = on ? "🔊" : "🔇";
+  b.title = on ? "Sound effects on (click to mute them on this device)" : "Sound effects muted on this device (click to turn on)";
+  b.setAttribute("aria-label", b.title);
+  b.classList.toggle("muted", !on);
+}
+
 let ctx;
 function audioCtx() { ctx = ctx || new (window.AudioContext || window.webkitAudioContext)(); return ctx; }
 function blip(freq = 1800, dur = 0.025, type = "square", gain = 0.04) {
+  if (!rbmSoundEffectsOn()) return;
   try {
     const c = audioCtx(), o = c.createOscillator(), g = c.createGain();
     o.type = type; o.frequency.value = freq; g.gain.value = gain;
@@ -83,8 +106,13 @@ function shiftDate(iso, days) {
 }
 async function loadCoverage() {
   try {
-    const data = await api(`/api/coverage?date=${state.date}`);
-    state.spans = data.spans; state.maxHours = data.max_hours;
+    const date = state.date;
+    const [data, guide] = await Promise.all([
+      api(`/api/coverage?date=${date}`),
+      api(`/api/shows?date=${date}`).catch(() => ({ shows: [] })),  // Names are a bonus.
+    ]);
+    if (date !== state.date) return;  // The date changed while loading.
+    state.spans = data.spans; state.maxHours = data.max_hours; state.shows = guide.shows;
     drawTimeline(); updateReadouts();
   } catch (err) { if (err.message !== "login") status(err.message, true); }
 }
@@ -96,6 +124,7 @@ $("next-day").addEventListener("click", () => { blip(1100); setDate(shiftDate(st
 // ---------- Timeline ----------
 // The strip runs from midnight to 06:00 the next morning, so overnight shows fit.
 const SPAN = 1800;
+const SHOW_BAND = 22;  // Height of the programme-guide row at the top of the strip.
 const tl = $("timeline");
 $("hours").innerHTML = [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30]
   .map((h) => `<span class="${h > 24 ? "next" : ""}">${pad(h % 24)}</span>`).join("");
@@ -113,8 +142,25 @@ function drawTimeline() {
   const grad = g.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, "#9dffc6"); grad.addColorStop(0.5, "#39ff88"); grad.addColorStop(1, "#0b7a3c");
   g.fillStyle = grad;
-  for (const [a, b] of state.spans) g.fillRect(x(a), 8, Math.max(1.5, x(b) - x(a)), h - 16);
+  for (const [a, b] of state.spans) g.fillRect(x(a), SHOW_BAND + 4, Math.max(1.5, x(b) - x(a)), h - SHOW_BAND - 10);
   g.shadowBlur = 0;
+  // Programme guide: one labelled block per show along the top. Click one to select it.
+  g.font = "600 11px 'Avenir Next', 'Segoe UI', system-ui, sans-serif"; g.textBaseline = "middle";
+  for (const show of state.shows) {
+    const a = x(show.from) + 1, b = Math.min(w, x(show.to)) - 1;
+    if (b - a < 2) continue;
+    g.fillStyle = show.probable ? "rgba(255,204,51,0.14)" : "rgba(255,204,51,0.26)";
+    g.fillRect(a, 2, b - a, SHOW_BAND - 2);
+    g.strokeStyle = "rgba(255,204,51,0.8)"; g.lineWidth = 1;
+    if (show.probable) g.setLineDash([3, 3]);
+    g.strokeRect(a + 0.5, 2.5, b - a - 1, SHOW_BAND - 3); g.setLineDash([]);
+    if (b - a > 26) {
+      g.save(); g.beginPath(); g.rect(a + 3, 0, b - a - 6, SHOW_BAND); g.clip();
+      g.fillStyle = "#ffe9a8"; g.fillText((show.probable ? "~ " : "") + show.name, a + 4, SHOW_BAND / 2 + 1);
+      g.restore();
+    }
+  }
+  g.textBaseline = "alphabetic";
   // Hour ticks.
   g.fillStyle = "rgba(255,255,255,0.25)";
   for (let hr = 1; hr < SPAN / 60; hr++) g.fillRect(x(hr * 60), 0, 1, hr % 3 ? 8 : 16);
@@ -132,21 +178,34 @@ function drawTimeline() {
 }
 addEventListener("resize", drawTimeline);
 
-let dragFrom = null;
+let dragFrom = null, dragMoved = false;
+const showAt = (m) => state.shows.find((s) => m >= s.from && m < s.to);
 const tlMinute = (e) => {
   const r = tl.getBoundingClientRect();
   return Math.min(SPAN, Math.max(0, Math.round(((e.clientX - r.left) / r.width) * SPAN / STEP) * STEP));
 };
 // A range must start on the chosen date; to start after midnight, pick the next date.
 tl.addEventListener("pointerdown", (e) => {
-  tl.setPointerCapture(e.pointerId); dragFrom = Math.min(tlMinute(e), 1440 - STEP); setRange(dragFrom, dragFrom + STEP);
+  tl.setPointerCapture(e.pointerId); dragMoved = false;
+  dragFrom = Math.min(tlMinute(e), 1440 - STEP); setRange(dragFrom, dragFrom + STEP);
 });
 tl.addEventListener("pointermove", (e) => {
-  if (dragFrom === null) return;
+  if (dragFrom === null) {
+    const show = showAt(tlMinute(e));
+    tl.title = show ? `${show.probable ? "Probably " : ""}${show.name}${show.presenter ? " — " + show.presenter : ""}`
+      + `${show.probable ? ` (per the ${show.schedule} schedule)` : ""}. Click to select.` : "";
+    return;
+  }
   const m = tlMinute(e);
+  if (m !== dragFrom) dragMoved = true;
   if (m > dragFrom) setRange(dragFrom, m); else if (m < dragFrom) setRange(Math.min(m, 1440 - STEP), dragFrom);
 });
-tl.addEventListener("pointerup", () => { dragFrom = null; });
+tl.addEventListener("pointerup", (e) => {
+  // A click (no drag) on a show selects the whole show.
+  const show = !dragMoved && showAt(tlMinute(e));
+  if (show) { setRange(Math.round(show.from), Math.round(show.to)); blip(1500); blip(2200); }
+  dragFrom = null;
+});
 
 // ---------- Knobs ----------
 // One full turn of a knob = 2 hours, so each 5-minute detent is 15 degrees.
@@ -205,10 +264,25 @@ function updateReadouts() {
   note.textContent = over ? `TOO LONG — vault limit is ${state.maxHours} hours`
     : state.end <= state.start ? "ends the next day" : "";
   note.style.color = over ? "var(--red)" : "";
+  const show = matchedShow();
+  $("show-note").textContent = show
+    ? `♪ ${show.probable ? "probably " : ""}${show.name}${show.presenter ? " · " + show.presenter : ""}` : "";
+  $("show-note").title = show && show.probable ? `Guessed from the ${show.schedule} programme guide` : "";
   $("download").disabled = over; $("audition").disabled = over;
   $("marquee").textContent = `★ ${state.date} ★ ${hhmm(state.start)} → ${hhmm(state.end)} ★ ${$("duration").textContent} OF PURE RADIO ★`;
 }
 function updateAll() { updateReadouts(); drawTimeline(); }
+
+// The show this selection is essentially a recording of (same 80% rule as the server).
+function matchedShow() {
+  const start = state.start, end = state.end <= state.start ? state.end + 1440 : state.end;
+  let best = null, bestOverlap = 0;
+  for (const s of state.shows) {
+    const overlap = Math.min(end, s.to) - Math.max(start, s.from);
+    if (overlap > bestOverlap) { best = s; bestOverlap = overlap; }
+  }
+  return best && bestOverlap >= 0.8 * (end - start) && bestOverlap >= 0.8 * (best.to - best.from) ? best : null;
+}
 
 function rangeQuery() {
   const endDate = state.end <= state.start ? shiftDate(state.date, 1) : state.date;
@@ -416,15 +490,31 @@ $("download").addEventListener("click", async () => {
   const btn = $("download");
   try {
     const check = await api(`/api/audio?${rangeQuery()}&check=1`);
-    btn.classList.add("sending"); zap();
-    $("flash").classList.remove("go"); void $("flash").offsetWidth; $("flash").classList.add("go");
-    const r = btn.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2, 260);
-    status(check.covered < check.requested ? `Downloading… ${gapNote(check)}` : "Downloading… your file is on its way");
-    const a = document.createElement("a");
-    a.href = `/api/audio?${rangeQuery()}&download=1`; a.rel = "noopener";
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => btn.classList.remove("sending"), 2500);
-  } catch (err) { if (err.message !== "login") status(err.message, true); }
+    const gaps = check.covered < check.requested - 5;
+    const href = `/api/audio?${rangeQuery()}&download=1`;
+    const startDownload = () => {
+      const a = document.createElement("a");
+      a.href = href; a.rel = "noopener";
+      document.body.appendChild(a); a.click(); a.remove();
+      status(gaps ? `Downloading… ${gapNote(check)}` : "Downloading… your file is on its way");
+    };
+    btn.classList.add("sending"); btn.disabled = true;  // One cassette at a time.
+    const show = check.show;
+    const endDate = state.end <= state.start ? shiftDate(state.date, 1) : state.date;
+    const day = new Date(`${state.date}T12:00`).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+    const title = show ? `${show.probable ? "Probably: " : ""}${show.name}` : "RBM FM · Off-Air";
+    const when = `${day} · ${hhmm(state.start)} → ${hhmm(state.end)}${endDate !== state.date ? " (+1)" : ""}`;
+    if (window.exportCassette) {
+      // The show: stamp, label, ejection. The download starts as the cassette flies off.
+      await window.exportCassette({ title, when, gaps, onDownload: startDownload });
+    } else {
+      startDownload();
+    }
+    btn.classList.remove("sending"); btn.disabled = false;
+  } catch (err) {
+    btn.classList.remove("sending"); updateReadouts();
+    if (err.message !== "login") status(err.message, true);
+  }
 });
 
 // ---------- Sky: stars and drifting radio waves ----------
@@ -492,6 +582,9 @@ if ("serviceWorker" in navigator) {
 }
 addEventListener("offline", () => status("You're offline. The vault needs a connection to play or download.", true));
 addEventListener("online", () => { status("Back online."); if (!$("console").hidden) loadCoverage(); else connect(); });
+
+$("sfx").addEventListener("click", () => { const on = !rbmSoundEffectsOn(); setSoundEffects(on); if (on) blip(1800); });
+showSfxState();
 
 // ---------- Start ----------
 (function init() {

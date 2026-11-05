@@ -135,7 +135,7 @@ ssh -t logger 'sudo systemctl start rbm-web-check rbm-weekly'
 - the recorder and download page configs, including the password hash, cookie secret and Cloudflare token;
 - the installed scripts and systemd units, the Caddy config, `mdadm.conf`, `smartd.conf`, the automatic-update settings and the logrotate rule;
 - SSH: host keys, server settings, and the `logger` user's `~/.ssh`;
-- the event log (`/var/lib/rbm-logger`) and the health-check state;
+- the event log (`/var/lib/rbm-logger`), the health-check state, and the programme-guide snapshots (`/var/lib/rbm-guide`);
 - `/rbm-backup-info/`: the package list, user and group numbers, the disk layout and partition tables, RAID details and enabled services.
 
 **It contains secrets,** so the folder and archives are readable only by root. It isn't an off-site backup: it's on the same RAID as the recordings. When off-site backup is set up, include `system-backup/`.

@@ -15,10 +15,11 @@ id -u rbmweb &>/dev/null || useradd --system --no-create-home --home-dir /nonexi
 usermod -aG rbmlogger rbmweb
 
 install -d -m 0755 /usr/local/lib/rbm-web /usr/local/lib/rbm-web/static /usr/local/lib/rbm-web/static/icons
-install -m 0755 rbm_web.py rbm_web_check.py /usr/local/lib/rbm-web/
-install -m 0644 static/index.html static/app.css static/app.js static/sw.js static/manifest.webmanifest /usr/local/lib/rbm-web/static/
+install -m 0755 rbm_web.py rbm_web_check.py rbm_guide_fetch.py /usr/local/lib/rbm-web/
+install -m 0644 static/index.html static/app.css static/app.js static/cassette.css static/cassette.js \
+  static/sw.js static/manifest.webmanifest /usr/local/lib/rbm-web/static/
 install -m 0644 static/icons/*.png /usr/local/lib/rbm-web/static/icons/
-install -m 0644 rbm-web.service rbm-web-check.service rbm-web-check.timer /etc/systemd/system/
+install -m 0644 rbm-web.service rbm-web-check.service rbm-web-check.timer rbm-guide-fetch.service rbm-guide-fetch.timer /etc/systemd/system/
 
 if [[ ! -f /etc/rbm-web.conf ]]; then
   echo 'Choose the presenter password for the download page.'
@@ -61,7 +62,9 @@ install -m 0644 Caddyfile /etc/caddy/Caddyfile
 systemctl daemon-reload
 systemctl enable rbm-web
 systemctl restart rbm-web
-systemctl enable --now rbm-web-check.timer
+systemctl enable --now rbm-web-check.timer rbm-guide-fetch.timer
+# Take the first programme-guide snapshot now, so show names appear straight away.
+systemctl start rbm-guide-fetch.service || true
 systemctl reload-or-restart caddy
 systemctl --no-pager --lines=3 status rbm-web
 echo

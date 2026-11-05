@@ -15,9 +15,15 @@ A password-protected web page where presenters can listen to, or download, any s
 
 1. Open the address and enter the presenter password. You stay logged in on that device for 30 days. **LOCK** logs out.
 2. Choose the **broadcast date**. The strip shows that day from midnight to 06:00 the next morning: green is recorded, red hatching is missing.
-3. Drag across the strip to choose a range, or set **START** and **END** precisely by turning the dials (one turn = 2 hours, 5-minute clicks; hold Shift for 1-minute steps) or typing the times. An end earlier than the start means the next day, so 23:00–01:00 works.
+3. **Click a show** in the gold row along the top of the strip to select exactly that show. Or drag across the strip to choose any range, or set **START** and **END** precisely by turning the dials (one turn = 2 hours, 5-minute clicks; hold Shift for 1-minute steps) or typing the times. An end earlier than the start means the next day, so 23:00–01:00 works.
 4. **▶ LISTEN** plays the range in the browser, with a scrub bar, skip buttons and a clock showing when it went to air. Missing stretches are skipped automatically.
-5. **DOWNLOAD** saves the range as one MP3, up to 6 hours long. If part of the range was never recorded, the page warns you first, and the file name ends in `_INCOMPLETE`.
+5. **DOWNLOAD** saves the range as one MP3, up to 6 hours long, after a short and entirely unnecessary cassette ceremony: a tape is labelled, stamped and ejected. Click or press any key to skip it; the download never waits for it.
+   - If the range is essentially one show (at least 80% overlap both ways), the file is named after it, for example `RBMFM_Strange-Brew-Breakfast_20261105_0700-0900.mp3`. Otherwise it's named by time, for example `RBMFM_20261105T0700-20261105T0930.mp3`.
+   - If part of the range was never recorded, the page warns you first, the stamp reads **INCOMPLETE — SOME RADIO MAY BE MISSING**, and the file name ends in `_INCOMPLETE`.
+
+**Show names** come from the station's programme guide (see [Programme guide](#programme-guide)). A name with **"probably"**, a `~` and a dashed outline is a guess from a later schedule: the show that is in that slot now, which may not be what was on that day. Overnight hours have no names, because there's no local programming then (that's usually the Community Radio Network).
+
+**On studio computers whose audio goes to air:** tap the **🔊** button next to LOCK so it shows **🔇**. That mutes the page's **sound effects** (the clicks, zaps, and the cassette's thud and whoosh) on that computer only, and it's remembered. **Listening still works normally,** so cue it to the monitors before pressing play. Clearing the browser's cookies turns the effects back on. An admin can also run `rbmMuteEffects()` or `rbmUnmuteEffects()` in the browser's developer console.
 
 All times are Blue Mountains local time.
 
@@ -39,6 +45,7 @@ Presenter ──https──> Cloudflare proxy ──https :8443──> routers �
 - **Downloading** joins the files for the range with ffmpeg. Where every file has the same format (all 48 kHz logger files, or all 44.1 kHz streamer files), the audio is copied unchanged and a 6-hour file takes seconds. A range crossing between the two formats is converted to 48 kHz, for that download only.
 - Where two recordings overlap (for example, the streamer and logger copies on 5 Nov 2026), each one is used only up to where the next starts, so nothing plays twice.
 - **Installable app (PWA):** `manifest.webmanifest` and the service worker `sw.js` make the page installable. The service worker caches only the page itself (HTML, CSS, JS, icons), always fetching fresh copies when online. It **never caches anything under `/api/`**, so logins, recordings and downloads always come from the server. After changing the page's files, bump `CACHE` in `sw.js` (`rbm-vault-shell-vN`) so installed copies drop their old cache.
+- **Cassette animation:** `static/cassette.js` and `cassette.css`, built from `mockups/cassette-export.html`, with 104 stamp labels. It plays after the download is checked, and starts the download as the cassette is ejected. Skipping, reduced-motion settings, or any error go straight to the download.
 - The timeline comes from the files' actual sizes, so a truncated recording shows only what really exists. Files under 5 seconds are ignored.
 
 ### Protecting the recorder
@@ -57,6 +64,16 @@ The page runs on the recording machine, so it is fenced off from it:
 - **Five wrong passwords from one address lock it out for 15 minutes**, with an alert to ntfy.
 - The station's podcasts are already public, so the content is not secret. The password is there to keep bots and casual browsing out.
 
+## Programme guide
+
+The station website's guide (WordPress with the MetaRadio plugin) is public at `https://www.rbm.org.au/wp-json/metaradio/v1/stationguide?station=1`, but it only covers **the coming 7 days**. So the logger saves a snapshot **every day** (`rbm_guide_fetch.py`, run by `rbm-guide-fetch.timer` at about 04:20, and at boot) into `/var/lib/rbm-guide/guide-YYYYMMDD.json`. The snapshots are tiny and are kept forever; they're also in the nightly settings backup.
+
+- **Exact names:** a date that some snapshot covered gets the shows that snapshot listed, the newest snapshot winning.
+- **Probable names:** a date before the first snapshot (6 Nov 2026), or any day no snapshot covered, borrows that weekday's shows from the nearest snapshot. These are marked "probably … (per the *Mon YYYY* schedule)".
+- **If a snapshot fails** (the website is down, or the plugin changes), ntfy gets **"RBM programme guide snapshot failed"**. One missed day doesn't matter; nearby snapshots fill in. If it keeps failing, check that the URL above still returns JSON.
+
+To take one by hand: `ssh -t logger 'sudo systemctl start rbm-guide-fetch && sudo ls /var/lib/rbm-guide'`.
+
 ## Alerts
 
 Problems are pushed to the same ntfy topic as the recorder's alerts (see [fm-logger.md](fm-logger.md#alerts)). Each kind of problem alerts at most once an hour.
@@ -70,6 +87,7 @@ Problems are pushed to the same ntfy topic as the recorder's alerts (see [fm-log
 | Download page can't read the archive / sees no recordings | The RAID isn't mounted or readable | Check the recorder's alerts and `cat /proc/mdstat` |
 | Download failed | ffmpeg failed to join a range | `journalctl -u rbm-web` for the error. Possibly a damaged recording file |
 | Download page error | An unexpected error in the page (the listener got an error message) | `journalctl -u rbm-web` for the traceback |
+| Programme guide snapshot failed | The daily guide couldn't be fetched from rbm.org.au | Nothing, if it's a one-off. If it repeats, check the guide URL in [Programme guide](#programme-guide) |
 | Repeated wrong passwords | An address was locked out | A one-off is probably a presenter. Repeats may be someone guessing; consider changing the password |
 
 The checks are run by `rbm-web-check.timer`, separately from the page itself, so they still report when the page is down. To run them by hand:
