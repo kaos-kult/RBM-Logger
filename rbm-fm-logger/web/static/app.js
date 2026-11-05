@@ -64,7 +64,7 @@ function showLogin() {
   $("password").value = "";
   $("console").hidden = true; $("login").hidden = false; $("password").focus();
 }
-function showConsole() { $("offline").hidden = true; $("login").hidden = true; $("console").hidden = false; loadCoverage(); }
+function showConsole() { $("offline").hidden = true; $("login").hidden = true; $("console").hidden = false; loadCoverage(); loadInfo(); }
 // Shown when the server can't be reached at all (offline, or the logger is down).
 function showUnreachable() {
   if (!$("console").hidden || !$("login").hidden) return;  // Keep what's already on screen.
@@ -291,7 +291,7 @@ function updateReadouts() {
     ? `♪ ${show.probable ? "probably " : ""}${show.name}${show.presenter ? " · " + show.presenter : ""}` : "";
   $("show-note").title = show && show.probable ? `Guessed from the ${show.schedule} programme guide` : "";
   $("download").disabled = over; $("audition").disabled = over;
-  $("marquee").textContent = `★ ${state.date} ★ ${hhmm(state.start)} → ${hhmm(state.end)} ★ ${$("duration").textContent} OF PURE RADIO ★`;
+  updateMarquee();
 }
 function updateAll() { updateReadouts(); drawTimeline(); startMarquee(); }
 
@@ -595,6 +595,56 @@ addEventListener("keydown", (e) => {
   kpos = e.key === konami[kpos] ? kpos + 1 : (e.key === konami[0] ? 1 : 0);
   if (kpos === konami.length) { kpos = 0; document.body.classList.toggle("disco"); zap(); burst(innerWidth / 2, innerHeight / 3, 400); }
 });
+
+// ---------- Marquee: on air now, the selection, and a rotating fact or tip ----------
+const TIPS = [
+  "CLICK A SHOW IN THE GOLD ROW TO SELECT IT",
+  "TURN THE DIALS FOR 5-MINUTE STEPS · HOLD SHIFT FOR 1 MINUTE",
+  "AN END TIME BEFORE THE START MEANS THE NEXT DAY",
+  "INSTALL THE VAULT AS AN APP FROM YOUR BROWSER'S MENU",
+  "DOWNLOADS ARE NAMED AFTER THE SHOW WHEN THE TIMES MATCH",
+  "LISTEN BEFORE YOU DOWNLOAD WITH ▶ LISTEN",
+  "ON AN ON-AIR COMPUTER? TAP 🔊 TO MUTE THE SOUND EFFECTS",
+  "CLICK OR PRESS ANY KEY TO SKIP THE CASSETTE",
+  "RADIO BLUE MOUNTAINS · ON AIR 24/7",
+  "UP TO 6 HOURS PER DOWNLOAD",
+];
+const info = { onAir: null, oldest: null, hours: 0 };
+let tipIndex = Math.floor(Math.random() * TIPS.length);
+const niceDate = (iso, opts = { weekday: "short", day: "numeric", month: "short" }) =>
+  new Date(`${iso}T12:00`).toLocaleDateString("en-AU", opts).replace(",", "").toUpperCase();
+const ampm = (m) => {
+  m = ((m % 1440) + 1440) % 1440;
+  const h = Math.floor(m / 60), mm = pad(m % 60), h12 = h % 12 || 12;
+  return `${h12}:${mm} ${h < 12 ? "AM" : "PM"}`;
+};
+function updateMarquee() {
+  const parts = [];
+  if (info.onAir) parts.push(`ON AIR NOW: ${info.onAir.name.toUpperCase()}${info.onAir.presenter ? " WITH " + info.onAir.presenter.toUpperCase() : ""}`);
+  const show = matchedShow(), len = lengthMinutes();
+  const lenText = len % 60 ? (len >= 60 ? `${Math.floor(len / 60)} H ${len % 60} MIN` : `${len} MIN`) : `${len / 60} HOUR${len === 60 ? "" : "S"}`;
+  parts.push(`SELECTED: ${show ? show.name.toUpperCase() + ", " : ""}${niceDate(state.date)} · ${ampm(state.start)}–${ampm(state.end)} · ${lenText}`);
+  const facts = [...TIPS];
+  if (info.oldest) facts.push(`THE VAULT GOES BACK TO ${niceDate(info.oldest, { day: "numeric", month: "short", year: "numeric" })}`);
+  if (info.hours) facts.push(`${info.hours.toLocaleString("en-AU")} HOURS OF RADIO IN THE VAULT`);
+  parts.push(facts[tipIndex % facts.length]);
+  const text = parts.join("   ✦   ");
+  if ($("marquee").textContent !== text) {
+    $("marquee").textContent = text;
+    // Keep a steady, readable speed whatever the length (about 9 characters a second).
+    $("marquee").style.animationDuration = `${Math.max(16, Math.round(text.length / 9))}s`;
+  }
+}
+// A different fact or tip each time the marquee goes round.
+$("marquee").addEventListener("animationiteration", () => { tipIndex++; updateMarquee(); });
+async function loadInfo() {
+  try {
+    const d = await api("/api/info");
+    Object.assign(info, { onAir: d.on_air, oldest: d.oldest, hours: d.hours });
+    updateMarquee();
+  } catch (_) { /* The marquee is decoration. */ }
+}
+setInterval(() => { if (!$("console").hidden) loadInfo(); }, 5 * 60 * 1000);
 
 // ---------- Installable app (PWA) ----------
 // The service worker only makes the page installable and lets it open offline; it never

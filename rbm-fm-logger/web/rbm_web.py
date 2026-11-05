@@ -412,6 +412,15 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/audio":
                 return self.audio(parse_local(query["start"]), parse_local(query["end"]),
                                   query.get("download") == "1", query.get("check") == "1")
+            if url.path == "/api/info":
+                # For the marquee: what's on air now, and how far back the archive goes.
+                now = dt.datetime.now(TZ)
+                recs = recordings()
+                on_air = next((sh for sh in shows_between(now, now + dt.timedelta(minutes=1)) if not sh["probable"]), None)
+                return self.send_json(HTTPStatus.OK, {
+                    "on_air": on_air and {"name": on_air["name"], "presenter": on_air["presenter"]},
+                    "oldest": recs[0].start.date().isoformat() if recs else None,
+                    "hours": round(sum((r.end - r.start).total_seconds() for r in recs) / 3600)})
             if url.path == "/api/shows":
                 day = dt.date.fromisoformat(query["date"])
                 day_start = dt.datetime.combine(day, dt.time(), TZ)
