@@ -1,0 +1,7 @@
+# Local tooling and build leftovers
+.claude/
+__pycache__/
+*.pyc
+.DS_Store
+# The original package as first received; the rbm-fm-logger/ folder supersedes it.
+rbm-fm-logger-debian.tar.gz

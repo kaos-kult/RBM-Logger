@@ -1,0 +1,17 @@
+[Unit]
+Description=RBM offsite recording backup (optional)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=rbmlogger
+Group=rbmlogger
+EnvironmentFile=/etc/rbm-logger.conf
+ExecStart=/usr/local/lib/rbm-logger/rbm_backup.py
+WorkingDirectory=/var/lib/rbm-logger
+TimeoutStartSec=0
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/rbm-logger

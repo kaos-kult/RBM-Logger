@@ -1,0 +1,27 @@
+[Unit]
+Description=RBM FM off-air audio logger and health supervisor
+Documentation=man:ffmpeg(1)
+After=local-fs.target systemd-udevd.service
+
+[Service]
+Type=simple
+User=rbmlogger
+Group=rbmlogger
+SupplementaryGroups=audio
+EnvironmentFile=/etc/rbm-logger.conf
+ExecStart=/usr/local/lib/rbm-logger/rbm_logger.py
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+KillMode=mixed
+UMask=0027
+WorkingDirectory=/var/lib/rbm-logger
+# Do not reboot, manipulate sound devices, or modify files outside these paths.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/mnt/storage /var/lib/rbm-logger
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

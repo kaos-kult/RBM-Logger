@@ -1,0 +1,19 @@
+[Unit]
+Description=RBM logger weekly summary to ntfy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# rbmlogger can read the recordings and event log; it sees no secrets beyond the ntfy topic.
+User=rbmlogger
+Group=rbmlogger
+EnvironmentFile=/etc/rbm-logger.conf
+# Disk health needs root; "+" runs just this step with full privileges.
+ExecStartPre=+/usr/local/lib/rbm-logger/smart_report.py
+ExecStart=/usr/local/lib/rbm-logger/rbm_weekly.py
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rbm-logger
+ProtectHome=true
+PrivateTmp=true

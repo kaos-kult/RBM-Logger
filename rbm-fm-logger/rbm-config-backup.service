@@ -1,0 +1,9 @@
+[Unit]
+Description=Copy the RBM logger's settings onto the RAID
+RequiresMountsFor=/mnt/storage
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/rbm-logger/rbm_config_backup.sh
+Nice=10
+IOSchedulingClass=idle

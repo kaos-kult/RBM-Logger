@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the RBM download page every 5 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+Unit=rbm-web-check.service
+
+[Install]
+WantedBy=timers.target

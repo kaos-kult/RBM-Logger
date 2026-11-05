@@ -1,0 +1,41 @@
+[Unit]
+Description=RBM off-air log download web service
+After=network.target
+# Keep retrying forever; the health check alerts if it stays down.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=rbmweb
+Group=rbmweb
+# Read-only access to recordings through the rbmlogger group (files are 0640).
+SupplementaryGroups=rbmlogger
+EnvironmentFile=/etc/rbm-web.conf
+ExecStart=/usr/local/lib/rbm-web/rbm_web.py
+Restart=always
+RestartSec=5
+# Downloads must never starve the recorder.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+CPUWeight=20
+MemoryMax=1G
+# Sandbox: cannot write anywhere, cannot touch the recorder or the system.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadOnlyPaths=/mnt/storage/recordings
+InaccessiblePaths=-/etc/rbm-logger.conf -/var/lib/rbm-logger
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+/var/lib/rbm-logger/events.log {
+    weekly
+    rotate 520
+    compress
+    delaycompress
+    missingok
+    notifempty
+    su rbmlogger rbmlogger
+    create 0640 rbmlogger rbmlogger
+}

@@ -1,0 +1,10 @@
+[Unit]
+Description=Attempt RBM offsite backup every six hours (optional)
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:15:00
+Persistent=true
+Unit=rbm-backup.service
+
+[Install]
+WantedBy=timers.target

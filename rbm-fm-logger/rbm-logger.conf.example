@@ -1,0 +1,37 @@
+# Edit ALSA_CARD_ID after running: cat /proc/asound/cards; arecord -l
+ALSA_CARD_ID=Device
+# The named card ID is stable across sound-card index changes.
+ALSA_DEVICE=plughw:CARD=Device,DEV=0
+INPUT_CHANNELS=2
+SAMPLE_RATE=48000
+BITRATE=192k
+# Time zone for file names and hourly splits (local time + UTC offset in the name).
+STATION_TZ=Australia/Sydney
+SILENCE_DB=-50
+SILENCE_SECONDS=900
+RAID_MOUNT=/mnt/storage
+# Filesystem UUID of the RAID mount: findmnt -no UUID /mnt/storage
+# Preferred over RAID_BLOCK_DEVICE: survives md0 -> md127 renames and LVM/LUKS.
+RAID_FS_UUID=
+# Only used when RAID_FS_UUID is empty.
+RAID_BLOCK_DEVICE=/dev/md0
+# Leave empty to auto-detect the md array(s) under RAID_MOUNT.
+RAID_DEGRADED_PATH=
+MIN_FREE_GIB=30
+MIN_RETENTION_AGE_SECONDS=7200
+# Minimum archive the station must keep; urgent alert if low disk deletes newer audio.
+# Check the period that applies to your licence.
+REQUIRED_RETENTION_DAYS=42
+STALL_SECONDS=90
+ALERT_AFTER_SECONDS=60
+# ntfy Android push: create a difficult-to-guess topic and set its endpoint.
+# Do not expose private broadcast operations on a guessable public topic.
+NTFY_URL=
+# Optional auth bearer token for a private ntfy server:
+NTFY_TOKEN=
+# Optional external uptime watchdog: e.g. Healthchecks.io ping URL.
+# Set its timeout/grace period above 60 seconds.
+HEARTBEAT_URL=
+# Optional: rclone destination for off-site backup, e.g. b2:rbm-archive/recordings
+# rclone credentials/config must be readable by rbmlogger.
+BACKUP_DEST=

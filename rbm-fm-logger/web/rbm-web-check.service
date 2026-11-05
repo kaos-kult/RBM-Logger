@@ -1,0 +1,19 @@
+[Unit]
+Description=RBM download page health check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=rbmweb
+Group=rbmweb
+EnvironmentFile=/etc/rbm-web.conf
+ExecStart=/usr/local/lib/rbm-web/rbm_web_check.py
+StateDirectory=rbm-web-check
+TimeoutStartSec=120
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+InaccessiblePaths=-/mnt/storage -/etc/rbm-logger.conf -/var/lib/rbm-logger

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RBM Off-Air Vault</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="app.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<canvas id="sky" aria-hidden="true"></canvas>
+<canvas id="sparks" aria-hidden="true"></canvas>
+<div class="scanlines" aria-hidden="true"></div>
+
+<header class="masthead">
+  <div class="tower" aria-hidden="true">
+    <span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span>
+    <svg viewBox="0 0 60 90"><path d="M30 8 L12 88 M30 8 L48 88 M18 60 L42 60 M15 74 L45 74 M22 40 L38 40 M25 26 L35 26" /><circle cx="30" cy="8" r="4" /></svg>
+  </div>
+  <h1><span class="chrome">RBM&nbsp;FM</span> <span class="neon">OFF-AIR VAULT</span></h1>
+  <p class="tagline">Every second we put to air. Sealed in the vault. Yours on demand.</p>
+  <div class="marquee" aria-hidden="true"><span id="marquee">★ ON AIR ★ RADIO BLUE MOUNTAINS ★ THE VAULT NEVER SLEEPS ★ PICK A TIME ★ BEAM IT DOWN ★</span></div>
+</header>
+
+<main>
+  <section id="login" class="panel vault" hidden>
+    <div class="vault-door" id="door" aria-hidden="true">
+      <div class="spokes"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="hub"></div>
+    </div>
+    <form id="login-form" class="login-form">
+      <label for="password">ENTER ACCESS CODE</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button type="submit" class="btn btn-gold">UNSEAL THE VAULT</button>
+      <p id="login-msg" class="msg" role="status"></p>
+    </form>
+  </section>
+
+  <section id="console" class="panel console" hidden>
+    <div class="row date-row">
+      <button class="btn btn-small" id="prev-day" aria-label="Previous day">◀</button>
+      <label class="led-wrap">
+        <span class="led-label">BROADCAST DATE</span>
+        <input id="date" type="date" class="led">
+      </label>
+      <button class="btn btn-small" id="next-day" aria-label="Next day">▶</button>
+      <button class="btn btn-small" id="logout">LOCK</button>
+    </div>
+
+    <div class="timeline-wrap">
+      <div class="timeline-hours" id="hours" aria-hidden="true"></div>
+      <canvas id="timeline" height="90" aria-label="Recorded coverage for the day. Drag to select a range."></canvas>
+      <p class="legend"><span class="sw sw-rec"></span> recorded <span class="sw sw-gap"></span> no recording <span class="sw sw-sel"></span> your selection · drag across the strip to choose</p>
+    </div>
+
+    <div class="row knobs">
+      <div class="knob-unit">
+        <span class="led-label">START</span>
+        <div class="knob" id="knob-start" tabindex="0" role="slider" aria-label="Start time"><div class="knob-cap"><i></i></div></div>
+        <input type="time" id="start" class="led led-time" step="60">
+      </div>
+
+      <div class="vu-unit">
+        <div class="vu"><canvas id="vu-l" width="220" height="130"></canvas><span>L</span></div>
+        <div class="vu"><canvas id="vu-r" width="220" height="130"></canvas><span>R</span></div>
+        <div class="readout"><span id="duration">--:--</span><small id="duration-note"></small></div>
+      </div>
+
+      <div class="knob-unit">
+        <span class="led-label">END</span>
+        <div class="knob" id="knob-end" tabindex="0" role="slider" aria-label="End time"><div class="knob-cap"><i></i></div></div>
+        <input type="time" id="end" class="led led-time" step="60">
+      </div>
+    </div>
+
+    <div class="row actions">
+      <button class="btn btn-cyan" id="audition">▶ LISTEN</button>
+      <button class="btn btn-mega" id="download"><span>DOWNLOAD</span></button>
+    </div>
+    <p id="status" class="msg" role="status"></p>
+
+    <div id="transport" class="transport" hidden>
+      <canvas id="scrub" height="56" aria-label="Playback position. Click or drag to seek."></canvas>
+      <div class="row transport-row">
+        <span class="clock" id="pos-clock" title="Time it went to air">--:--:--</span>
+        <button class="btn btn-small" id="back300" aria-label="Back 5 minutes">−5m</button>
+        <button class="btn btn-small" id="back30" aria-label="Back 30 seconds">−30s</button>
+        <button class="btn btn-play" id="play" aria-label="Play">▶</button>
+        <button class="btn btn-small" id="fwd30" aria-label="Forward 30 seconds">+30s</button>
+        <button class="btn btn-small" id="fwd300" aria-label="Forward 5 minutes">+5m</button>
+        <span class="clock dim" id="pos-elapsed">0:00:00 / 0:00:00</span>
+      </div>
+    </div>
+    <audio id="player-a" preload="auto"></audio>
+    <audio id="player-b" preload="auto"></audio>
+  </section>
+</main>
+
+<footer>Radio Blue Mountains · off-air logger · times are Blue Mountains local time</footer>
+<div id="flash" aria-hidden="true"></div>
+</body>
+</html>

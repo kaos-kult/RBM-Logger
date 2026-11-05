@@ -1,0 +1,30 @@
+# The ISP blocks incoming 80/443, so the router forwards external 8443 -> logger 443.
+# Visitors use https://rbm.kaos.zone through Cloudflare's proxy, whose origin rule sends
+# them to port 8443. The certificate is proved through Cloudflare DNS.
+# See caddy-dns-setup.sh. Add the future name to the list later:
+#   rbm.kaos.zone, logs.rbm.org.au {
+{
+	# Nothing reaches port 80 from outside, so don't bother redirecting it.
+	auto_https disable_redirects
+	# The site is proxied through Cloudflare (origin rule: 443 -> 8443). Trust Cloudflare's
+	# servers to say who the real visitor is, so the password lockout applies to that
+	# visitor and not to a Cloudflare server shared by many people. List from
+	# https://www.cloudflare.com/ips (checked 6 Nov 2026); review it now and then.
+	servers {
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		client_ip_headers CF-Connecting-IP
+	}
+}
+
+rbm.kaos.zone {
+	tls {
+		dns cloudflare {env.CF_API_TOKEN}
+	}
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy 127.0.0.1:8080 {
+		# The real visitor's address, for the password lockout and the logs.
+		header_up X-Real-IP {client_ip}
+		# Stream audio as it is joined instead of buffering it.
+		flush_interval -1
+	}
+}
