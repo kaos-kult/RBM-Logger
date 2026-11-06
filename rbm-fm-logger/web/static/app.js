@@ -293,8 +293,8 @@ function setRange(a, b) { state.start = clampMin(a); state.end = clampMin(b); up
 function lengthMinutes() { return ((state.end - state.start) + 1440) % 1440 || 1440; }
 function updateReadouts() {
   $("start").value = hhmm(state.start); $("end").value = hhmm(state.end);
-  $("knob-start").firstElementChild.style.transform = `rotate(${state.start * DEG_PER_MINUTE}deg)`;
-  $("knob-end").firstElementChild.style.transform = `rotate(${state.end * DEG_PER_MINUTE}deg)`;
+  $("knob-start").querySelector(".knob-pointer").style.transform = `rotate(${state.start * DEG_PER_MINUTE}deg)`;
+  $("knob-end").querySelector(".knob-pointer").style.transform = `rotate(${state.end * DEG_PER_MINUTE}deg)`;
   $("knob-start").setAttribute("aria-valuetext", hhmm(state.start));
   $("knob-end").setAttribute("aria-valuetext", hhmm(state.end));
   const len = lengthMinutes(), over = len > state.maxHours * 60;
