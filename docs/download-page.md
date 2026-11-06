@@ -4,7 +4,7 @@ A password-protected web page where presenters can listen to, or download, any s
 
 | | |
 |---|---|
-| Address | **https://rbm.kaos.zone** through Cloudflare (temporary; planned: `logs.rbm.org.au`, see [Moving to rbm.org.au](#moving-to-rbmorgau)) |
+| Address | **https://rbm.kaos.zone**, through a Cloudflare Tunnel since 6 Nov 2026 (temporary; planned: `vault.rbm.org.au`, see [Cloudflare Tunnel](#cloudflare-tunnel-the-way-in-from-now-on)) |
 | Runs on | The logger (Logger-PC), next to the recordings |
 | Login | One shared presenter password |
 | Software | `/usr/local/lib/rbm-web/` (service `rbm-web`), web server Caddy (`caddy`) |
@@ -39,8 +39,7 @@ The app still needs a connection to play or download. Offline, it opens and says
 ## How it works
 
 ```
-Presenter ──https──> Cloudflare proxy ──https :8443──> routers ──> Caddy :443 (TLS) ──> rbm-web 127.0.0.1:8080 ──read-only──> /mnt/storage/recordings
-                     (origin rule)                                 on the logger
+Presenter ──https──> Cloudflare ══ tunnel (outgoing from the logger) ══> cloudflared ──> Caddy 127.0.0.1:8081 ──> rbm-web 127.0.0.1:8080 ──read-only──> /mnt/storage/recordings
 ```
 
 - **Live** (`/api/live?at=<time>`) streams the archive from any moment and **never ends**: at the end of the file the recorder is still writing, it waits for more, and at the top of the hour it carries on into the next file. Each stream starts on an MP3 frame boundary. Pausing on the page drops the stream and remembers the moment; play opens a new stream from there. Up to 12 live listeners at once (`WEB_MAX_LIVE`), each stream capped at 12 hours, and a stream gives up if the recorder writes nothing for 2 minutes.

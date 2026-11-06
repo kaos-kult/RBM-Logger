@@ -22,7 +22,7 @@ The station has two routers in series: the ISP's NetComm modem, then the UniFi U
 | External port | NetComm → | UDM → | Purpose |
 |---|---|---|---|
 | 2222 | 192.168.1.3 (UDM) | 10.1.2.198:22 (logger) | SSH to the logger |
-| 8443 | 192.168.1.3:8443 | 10.1.2.198:443 (logger) | Download page, see [download-page.md](download-page.md) |
+| 8443 | 192.168.1.3:8443 | 10.1.2.198:443 (logger) | **No longer needed** since 6 Nov 2026: the download page now arrives through a Cloudflare Tunnel (see [download-page.md](download-page.md#cloudflare-tunnel-the-way-in-from-now-on)). Delete these forwards |
 | 80, 443 | | | **Unusable: the ISP (AAPT) blocks incoming 80 and 443.** These forwards can be deleted |
 
 Key: `~/.ssh/psychic_paper` (the key labelled "Kaos: Whatever clearance you were about to ask for.").
@@ -69,6 +69,6 @@ The logger no longer uses Dante, so it can move off the Dante subnet (`10.1.2.x`
    ```
    Do this first. Afterwards you can only reach them through Breeze.
 2. **The router's DHCP reservation** for the logger: change it to the new address.
-3. **The UDM's port forwards** for 2222 (SSH) and 8443 (download page): point them at the new address. Otherwise `ssh logger` and the download page stop working from outside.
+3. **The UDM's port forward** for 2222 (SSH): point it at the new address, or `ssh logger` stops working from outside. (The download page uses the Cloudflare Tunnel, which doesn't care about the logger's address.)
 4. Move the logger and reboot it (or renew DHCP). Check `ssh logger` and `ssh streamer`.
 5. Remove the old address from the Windows firewall rules, and update the table above.
