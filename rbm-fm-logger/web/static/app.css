@@ -254,6 +254,14 @@ footer { text-align: center; color: var(--dim); font-size: 0.8rem; padding: 0 16
   .knob { width: 104px; height: 104px; }
   .vu-unit { order: 3; min-width: 0; max-width: none; flex-basis: 100%; }
   .led-time { font-size: 1.5rem; }
+  /* Date across the top, then 🔒 ◀ ▶ 🔊 in one symmetric row. */
+  .date-row { display: grid; grid-template-columns: repeat(4, auto); justify-content: center; gap: 10px 14px;
+    grid-template-areas: "date date date date" "lock prev next sfx"; }
+  .date-row .led-wrap { grid-area: date; }
+  .date-row #logout { grid-area: lock; }
+  .date-row #prev-day { grid-area: prev; }
+  .date-row #next-day { grid-area: next; }
+  .date-row #sfx { grid-area: sfx; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

@@ -22,7 +22,7 @@ Repository: https://github.com/kaos-kult/RBM-Logger
   - Studio (Dante) recorder: `rbm_studio.py`, `rbm-studio.service`, `rbm-ptp.service`, `statime.toml`; install with `install-studio.sh`.
   - Weekly summary: `rbm_weekly.py`. Disk health: `smart_report.py`, `smart_alert.sh`.
   - Nightly settings backup: `rbm_config_backup.sh`. Optional off-site backup: `rbm_backup.py`.
-  - Archive import tools: `import_old_logs.py`, `split_butt_recordings.py` (also into the studio copy, `--prefix RBMSTUDIO`), `butt_align.py` (checks BUTT timing against FM), `rename_utc_recordings.py`, `pull_old_logs.sh`.
+  - Archive import tools: `reclassify_studio_archive.py` (one-off, 7 Nov 2026: pre-logger recordings into the studio copy), `import_old_logs.py`, `split_butt_recordings.py` (also into the studio copy, `--prefix RBMSTUDIO`), `butt_align.py` (checks BUTT timing against FM), `rename_utc_recordings.py`, `pull_old_logs.sh`.
 - `rbm-fm-logger/web/`: the download page.
   - Service: `rbm_web.py`. Health check: `rbm_web_check.py`. Front end: `static/`.
   - Install: `install-web.sh`, `caddy-dns-setup.sh`.

@@ -33,6 +33,9 @@ STUDIO = MOUNT / "studio"
 STUDIO_NAME = re.compile(r"^RBMSTUDIO_(\d{8}T\d{6}[+-]\d{4})\.mp3$")
 BYTES_PER_SECOND = 192000 / 8
 REQUIRED_DAYS = int(os.environ.get("REQUIRED_RETENTION_DAYS", "42"))
+# This logger's own off-air recording began then; everything older is the studio copy
+# (moved there on 7 Nov 2026). Coverage and archive length count from this moment.
+OFFAIR_SINCE = dt.datetime(2026, 11, 5, 20, 27, 35, tzinfo=dt.timezone(dt.timedelta(hours=11)))
 GAP_REPORT_SECONDS = 120
 
 
@@ -119,9 +122,11 @@ def main():
 
     try:
         recs = recordings()
-        covered, gaps = coverage(recs, since, now)
-        pct = covered / (now - since).total_seconds() * 100
-        lines.append(f"Recorded: {covered / 3600:.1f} of 168 h ({pct:.1f}%)")
+        window = max(since, OFFAIR_SINCE)
+        covered, gaps = coverage(recs, window, now)
+        hours = (now - window).total_seconds() / 3600
+        pct = covered / (now - window).total_seconds() * 100
+        lines.append(f"Recorded off-air: {covered / 3600:.1f} of {hours:.0f} h ({pct:.1f}%)")
         if gaps:
             lines.append(f"Gaps over {GAP_REPORT_SECONDS // 60} min: {len(gaps)}")
             for a, b in sorted(gaps, key=lambda g: g[0] - g[1])[:3]:
@@ -130,10 +135,11 @@ def main():
             problems.append(f"only {pct:.0f}% recorded")
         if recs:
             oldest_days = (now - recs[0][0]).days
-            lines.append(f"Archive: {recs[0][0]:%d %b %Y} to now ({oldest_days} days, "
+            lines.append(f"Off-air archive: {recs[0][0]:%d %b %Y} to now ({oldest_days} days, "
                          f"{len(recs)} files)")
-            if oldest_days < REQUIRED_DAYS:
-                problems.append(f"archive covers only {oldest_days} days")
+            # Only a problem once the logger has been recording long enough to have it.
+            if oldest_days < REQUIRED_DAYS and (now - OFFAIR_SINCE).days >= REQUIRED_DAYS:
+                problems.append(f"off-air archive covers only {oldest_days} days")
     except OSError as exc:
         lines.append(f"Recordings: UNREADABLE ({exc})")
         problems.append("recordings unreadable")
@@ -168,6 +174,8 @@ def main():
             span = (now - max(since, srecs[0][0])).total_seconds() if srecs else 0
             spct = scovered / span * 100 if span else 0
             lines.append(f"Studio copy: {scovered / 3600:.1f} h this week ({spct:.1f}% since it started)")
+            if srecs:
+                lines.append(f"Studio archive: {srecs[0][0]:%d %b %Y} to now ({len(srecs)} files)")
             if studio_on and spct < 95:
                 problems.append(f"studio copy only {spct:.0f}%")
         except OSError as exc:

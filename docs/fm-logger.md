@@ -106,12 +106,15 @@ Change settings: edit `/etc/rbm-logger.conf` with `sudo nano`, then restart. The
 
 ## The archive
 
-| Period | Source | Notes |
-|---|---|---|
-| 1 Jan 2026 00:00 → 7 May 2026 01:00 | Old logger (BUTT), portable drive folder `Logs 2026` | 30-minute files, 48 kHz. Imported 6 Nov 2026 |
-| 7 May 2026 09:46 → 4 Nov 2026 20:00 | Old logger (BUTT), portable drive folder `LOGS 20260507` | 30-minute files, 48 kHz. Imported 6 Nov 2026. About 8¾ hours missing on the morning of 7 May, between the two folders |
-| 4 Nov 2026 19:45 → 5 Nov 21:46 | Streamer (BUTT), split into hourly files | 44.1 kHz. Cut points corrected for the sound card's drift (about 2.5 min per day) |
-| 5 Nov 2026 21:35 onward | This logger | 48 kHz. Overlaps the streamer by about 10 minutes |
+**The off-air archive (`/mnt/storage/recordings`, `RBMFM_`) starts on 5 Nov 2026 at 20:27**, when this logger first recorded. Everything older was recorded on the studio side, by the old logger and then by BUTT. It was filed as `RBMFM_` when imported on 6 Nov, which was misleading, so on 7 Nov 2026 it was moved into the studio copy as `RBMSTUDIO_` (`reclassify_studio_archive.py`; every move is listed in `/var/lib/rbm-logger/reclassify-20261107.tsv`). The 28 hours that duplicated the BUTT import are in `/mnt/storage/replaced/butt-duplicates/`.
+
+| Period | Source | Now in | Notes |
+|---|---|---|---|
+| 1 Jan 2026 00:00 → 7 May 2026 01:00 | Old logger (BUTT), portable drive folder `Logs 2026` | Studio copy | 30-minute files. Imported 6 Nov 2026 |
+| 7 May 2026 09:46 → 4 Nov 2026 20:00 | Old logger (BUTT), portable drive folder `LOGS 20260507` | Studio copy | 30-minute files. Imported 6 Nov 2026. About 8¾ hours missing on the morning of 7 May, between the two folders |
+| 4 Nov 2026 19:45 → 7 Nov 00:00 | Streamer (BUTT), split into hourly files | Studio copy | 44.1 kHz. Cut points corrected for the sound card's drift. See [studio-recorder.md](studio-recorder.md#imported-from-butt-4-6-nov-2026) |
+| 5 Nov 2026 20:27 onward | This logger, off-air | Off-air archive | 48 kHz. A few reboot gaps on the first evening (20:27–21:35) |
+| 6 Nov 2026 23:41 onward | This logger, off Dante | Studio copy | See [studio-recorder.md](studio-recorder.md) |
 
 ### Known gaps in the old logger's recordings
 
@@ -142,7 +145,7 @@ The portable drive (on STUDIOB) also holds 2019, Jan–Apr 2020, a patchy Jul–
 3. Move into `recordings/` and set ownership to `rbmlogger`, mode 0640.
 4. If a temporary key was used for the copy, remove it from the source machine afterwards (done for STUDIOB, 6 Nov 2026).
 
-Tonight's first logger recordings (5 Nov 20:27–21:35) were replaced by the streamer's copies, which have no reboot gaps. The originals are in `/mnt/storage/replaced/`.
+The logger's first recordings (5 Nov 20:27–21:35) were at first replaced by the streamer's copies, which have no reboot gaps. On 7 Nov they went back into the off-air archive, since they're the genuine off-air recording; the streamer's copies are in the studio copy. (These steps put files into `recordings/`; a studio-side source now belongs in `studio/` as `RBMSTUDIO_`.)
 
 ### The streamer as a backup recorder
 

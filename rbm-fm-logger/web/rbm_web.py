@@ -565,9 +565,13 @@ class Handler(BaseHTTPRequestHandler):
                 on_air = next((sh for sh in shows_between(now, now + dt.timedelta(minutes=1)) if not sh["probable"]), None)
                 return self.send_json(HTTPStatus.OK, {
                     "on_air": on_air and {"name": on_air["name"], "presenter": on_air["presenter"]},
-                    "oldest": recs[0].start.date().isoformat() if recs else None,
+                    # The vault as a whole: the studio copy goes back further than off-air.
+                    "oldest": min([r[0].start for r in (recs, studio) if r], default=None)
+                              and min([r[0].start for r in (recs, studio) if r]).date().isoformat(),
                     "studio_oldest": studio[0].start.date().isoformat() if studio else None,
-                    "hours": round(sum((r.end - r.start).total_seconds() for r in recs) / 3600)})
+                    # Studio copy with holes filled from off-air, so overlaps count once.
+                    "hours": round(sum(b - a for _, a, b in pieces(
+                        min([r[0].start for r in (recs, studio) if r], default=now), now, STUDIO)) / 3600)})
             if url.path == "/api/shows":
                 day = dt.date.fromisoformat(query["date"])
                 day_start = dt.datetime.combine(day, dt.time(), TZ)
