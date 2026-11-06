@@ -300,7 +300,7 @@ function updateReadouts() {
   $("download").disabled = over; $("audition").disabled = over;
   updateMarquee();
 }
-function updateAll() { updateReadouts(); drawTimeline(); startMarquee(); }
+function updateAll() { updateReadouts(); drawTimeline(); startMarquee(); showTrim(); }
 
 // The show this selection is essentially a recording of (same 80% rule as the server).
 function matchedShow() {
@@ -316,6 +316,41 @@ function matchedShow() {
 function rangeQuery() {
   const endDate = state.end <= state.start ? shiftDate(state.date, 1) : state.date;
   return `start=${state.date}T${hhmm(state.start)}&end=${endDate}T${hhmm(state.end)}`;
+}
+
+// ---------- Trimming: IN/OUT handles in the LISTEN player, to the second ----------
+// trim.in/out are seconds from the start of the selected range. They belong to the range
+// they were set on; changing the selection drops them.
+const trim = { key: null, in: 0, out: 0, len: 0, active: "out" };
+const trimmed = () => trim.key !== null && trim.key === rangeQuery() && !live.on;
+// Local "YYYY-MM-DDTHH:MM:SS" for a number of seconds after midnight on the chosen date.
+function stampAt(seconds) {
+  const d = new Date(`${state.date}T00:00:00`);
+  d.setSeconds(d.getSeconds() + Math.round(seconds));
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+const hms = (seconds) => stampAt(seconds).slice(11);
+// The query for what will actually be downloaded: the trimmed cut if there is one.
+function cutQuery() {
+  if (!trimmed() || (trim.in === 0 && trim.out === trim.len)) return rangeQuery();
+  const base = state.start * 60;
+  return `start=${stampAt(base + trim.in)}&end=${stampAt(base + trim.out)}`;
+}
+function setTrim(which, value) {
+  const min = which === "in" ? 0 : trim.in + 1, max = which === "in" ? trim.out - 1 : trim.len;
+  trim[which] = Math.round(Math.max(min, Math.min(max, value)));
+  trim.active = which;
+  showTrim();
+}
+function showTrim() {
+  const on = trimmed();
+  $("trim-row").hidden = !on;
+  if (!on) return;
+  const base = state.start * 60;
+  $("trim-in").textContent = hms(base + trim.in);
+  $("trim-out").textContent = hms(base + trim.out);
+  const cut = trim.out - trim.in, whole = cut === trim.len;
+  $("trim-len").textContent = whole ? `${fmt(cut)} · drag the ✂ scissors to trim` : `cut: ${fmt(cut)} (trimmed ${fmt(trim.len - cut)})`;
 }
 function status(text, bad = false) { const s = $("status"); s.textContent = text; s.className = bad ? "msg bad" : "msg"; }
 
@@ -369,7 +404,7 @@ async function startLive() {
   wireAnalysers();
   decks.forEach((el) => { el.pause(); delete el.dataset.id; });
   Object.assign(player, { segs: [], duration: LIVE_WINDOW, seg: -1, deck: 0 });
-  live.on = true; live.retry = 0;
+  live.on = true; live.retry = 0; $("trim-row").hidden = true;
   $("live").classList.add("on");
   $("transport").hidden = false;
   status("Live from the logger, a few seconds behind the air. Pause and rewind as you like.");
@@ -381,8 +416,22 @@ async function startLive() {
   await setPlaying(true);
   $("transport").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
-function stopLive() { live.on = false; live.pausedAt = null; $("live").classList.remove("on"); $("golive").hidden = true; }
+function stopLive() { live.on = false; showTrim(); live.pausedAt = null; $("live").classList.remove("on"); $("golive").hidden = true; }
 $("live").addEventListener("click", () => { blip(1200); blip(1800); startLive(); });
+for (const [id, which, delta] of [["in-minus", "in", -1], ["in-plus", "in", 1], ["out-minus", "out", -1], ["out-plus", "out", 1]]) {
+  $(id).addEventListener("click", () => { blip(1600); setTrim(which, trim[which] + delta); });
+}
+$("hear-in").addEventListener("click", async () => { await seek(trim.in); await setPlaying(true); });
+// The last 5 seconds before the cut; playback stops at OUT by itself.
+$("hear-out").addEventListener("click", async () => { await seek(Math.max(trim.in, trim.out - 5)); await setPlaying(true); });
+$("trim-reset").addEventListener("click", () => { trim.in = 0; trim.out = trim.len; showTrim(); });
+// Stop at OUT, so what you hear ends where the download will.
+function checkTrimEnd() {
+  if (trimmed() && player.playing && trim.out < trim.len && position() >= trim.out - 0.05) {
+    setPlaying(false);
+    status(`Stopped at OUT (${hms(state.start * 60 + trim.out)}), where your download ends.`);
+  }
+}
 $("golive").addEventListener("click", () => { blip(2000); liveGo(nowSec() - LIVE_DELAY); });
 // If the stream ends or breaks (network blip, recorder restart), pick up where it was.
 for (const ev of ["ended", "error", "stalled"]) {
@@ -468,6 +517,8 @@ $("audition").addEventListener("click", async () => {
     wireAnalysers();
     decks.forEach((el) => { el.pause(); delete el.dataset.id; });
     Object.assign(player, { segs: data.segments, duration: data.duration, seg: -1, deck: 0, startSec: state.start * 60 });
+    if (trim.key !== rangeQuery()) Object.assign(trim, { key: rangeQuery(), in: 0, out: data.duration, len: data.duration });
+    showTrim();
     $("transport").hidden = false;
     status(data.missing > 0 ? `Heads up: ${howLong(data.missing)} of this range was never recorded` : "");
     if ("mediaSession" in navigator) {
@@ -491,7 +542,7 @@ function checkHandover() {
 }
 decks.forEach((el) => {
   el.addEventListener("ended", () => { if (!live.on && el === deck() && !player.busy) advance(); });
-  el.addEventListener("timeupdate", () => { if (!live.on && el === deck()) checkHandover(); });
+  el.addEventListener("timeupdate", () => { if (!live.on && el === deck()) { checkHandover(); checkTrimEnd(); } });
 });
 addEventListener("keydown", (e) => {
   if (e.key !== " " || $("transport").hidden || e.target.closest("input, button, [role=slider]")) return;
@@ -512,8 +563,28 @@ const scrubTime = (e) => {
   const r = scrub.getBoundingClientRect();
   return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * player.duration;
 };
-scrub.addEventListener("pointerdown", (e) => { scrub.setPointerCapture(e.pointerId); scrubbing = scrubTime(e); });
+let draggingHandle = null;
+const HANDLE_GRAB_PX = 12;
+function handleNear(e) {
+  if (!trimmed()) return null;
+  const r = scrub.getBoundingClientRect(), px = (v) => r.left + (v / player.duration) * r.width;
+  const dIn = Math.abs(e.clientX - px(trim.in)), dOut = Math.abs(e.clientX - px(trim.out));
+  if (Math.min(dIn, dOut) > HANDLE_GRAB_PX) return null;
+  return dIn < dOut ? "in" : "out";
+}
+scrub.addEventListener("pointerdown", (e) => {
+  scrub.setPointerCapture(e.pointerId);
+  draggingHandle = handleNear(e);
+  if (draggingHandle) { trim.active = draggingHandle; return; }
+  scrubbing = scrubTime(e);
+});
 scrub.addEventListener("pointermove", (e) => {
+  if (draggingHandle) {
+    if (e.pointerType === "mouse" && !(e.buttons & 1)) { draggingHandle = null; return; }
+    setTrim(draggingHandle, scrubTime(e));
+    return;
+  }
+  scrub.style.cursor = handleNear(e) ? "ew-resize" : "pointer";
   if (scrubbing === null) return;
   if (e.pointerType === "mouse" && !(e.buttons & 1)) { scrubbing = null; return; }  // Released elsewhere.
   scrubbing = scrubTime(e);
@@ -522,11 +593,44 @@ for (const ev of ["pointercancel", "lostpointercapture"]) scrub.addEventListener
   if (scrubbing !== null) seek(scrubbing);
   scrubbing = null;
 });
-scrub.addEventListener("pointerup", () => { if (scrubbing !== null) seek(scrubbing); scrubbing = null; });
+scrub.addEventListener("pointerup", () => {
+  if (draggingHandle) { blip(1500); draggingHandle = null; return; }
+  if (scrubbing !== null) seek(scrubbing);
+  scrubbing = null;
+});
+for (const ev of ["pointercancel", "lostpointercapture"]) scrub.addEventListener(ev, () => { draggingHandle = null; });
+scrub.addEventListener("keydown", (e) => {
+  if (!trimmed() || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+  e.preventDefault();
+  setTrim(trim.active, trim[trim.active] + (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 10 : 1));
+});
+const SCISSOR_BAND = 42;  // room above the scrub bar for the trim scissors
+// A pair of scissors pointing down at the cut line, drawn with paths so it looks the same
+// everywhere: two finger loops at the top, blades crossing at a pivot, tips at the line.
+function drawScissors(g, cx, cy, hot) {
+  g.save();
+  g.translate(cx, cy);
+  g.scale(1.55, 1.55);
+  g.lineCap = "round"; g.lineJoin = "round";
+  g.shadowColor = "#ffcc33"; g.shadowBlur = hot ? 12 : 5;
+  const steel = hot ? "#fff6cf" : "#e9e2ff", loops = hot ? "#ffcc33" : "#ff2bd6";
+  // Blades: from the loops, crossing at the pivot, to the tips just above the bar.
+  g.strokeStyle = steel; g.lineWidth = 2.6;
+  g.beginPath(); g.moveTo(-6, -6); g.lineTo(1.5, 13); g.stroke();
+  g.beginPath(); g.moveTo(6, -6); g.lineTo(-1.5, 13); g.stroke();
+  // Finger loops.
+  g.strokeStyle = loops; g.lineWidth = 2.4;
+  g.beginPath(); g.ellipse(-7.5, -10, 4.2, 4.6, -0.35, 0, Math.PI * 2); g.stroke();
+  g.beginPath(); g.ellipse(7.5, -10, 4.2, 4.6, 0.35, 0, Math.PI * 2); g.stroke();
+  // Pivot screw.
+  g.shadowBlur = 0; g.fillStyle = "#1a1000";
+  g.beginPath(); g.arc(0, 2.5, 1.8, 0, Math.PI * 2); g.fill();
+  g.restore();
+}
 function drawTransport() {
   requestAnimationFrame(drawTransport);
   if ($("transport").hidden) return;
-  checkHandover();
+  checkHandover(); checkTrimEnd();
   if (live.on) player.startSec = secondsOfDay(liveWindowStart());
   const t = scrubbing ?? position();
   $("pos-clock").textContent = clockAt(t);
@@ -539,26 +643,45 @@ function drawTransport() {
     $("pos-elapsed").textContent = `${fmt(t)} / ${fmt(player.duration)}`;
   }
   const dpr = devicePixelRatio || 1, w = scrub.clientWidth, h = scrub.clientHeight;
-  if (scrub.width !== w * dpr) { scrub.width = w * dpr; scrub.height = h * dpr; }
+  if (scrub.width !== w * dpr || scrub.height !== h * dpr) { scrub.width = w * dpr; scrub.height = h * dpr; }
   const g = scrub.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const x = (v) => (v / player.duration) * w;
-  g.fillStyle = "#14040a"; g.fillRect(0, 0, w, h);
+  // When trimming, the scissors live in a band above the audio bar.
+  const top = trimmed() ? SCISSOR_BAND : 0, barTop = top + 8, barH = h - top - 16;
+  g.clearRect(0, 0, w, h);
+  g.fillStyle = "#14040a"; g.fillRect(0, top, w, h - top);
+  g.save(); g.beginPath(); g.rect(0, top, w, h - top); g.clip();
   g.strokeStyle = "rgba(255,51,85,0.45)"; g.lineWidth = 2;
   for (let i = -h; i < w; i += 9) { g.beginPath(); g.moveTo(i, h); g.lineTo(i + h, 0); g.stroke(); }
+  g.restore();
   if (live.on) {
     // The last 6 hours: listened-to part in cyan, the rest available up to now.
-    g.fillStyle = "#123a24"; g.fillRect(0, 10, w, h - 20);
-    g.fillStyle = "#19f6ff"; g.fillRect(0, 10, Math.max(0, x(t)), h - 20);
+    g.fillStyle = "#123a24"; g.fillRect(0, barTop, w, barH);
+    g.fillStyle = "#19f6ff"; g.fillRect(0, barTop, Math.max(0, x(t)), barH);
     g.fillStyle = "#ff3355"; g.fillRect(w - 3, 4, 3, h - 8);
     g.font = "bold 10px ui-monospace, monospace"; g.fillStyle = "#ffb3c1"; g.fillText("NOW", w - 30, 12);
   }
   for (const seg of player.segs) {
-    g.fillStyle = "#123a24"; g.fillRect(x(seg.at), 10, x(segEnd(seg)) - x(seg.at), h - 20);
+    g.fillStyle = "#123a24"; g.fillRect(x(seg.at), barTop, x(segEnd(seg)) - x(seg.at), barH);
     const done = Math.min(segEnd(seg), t);
-    if (done > seg.at) { g.fillStyle = "#19f6ff"; g.fillRect(x(seg.at), 10, x(done) - x(seg.at), h - 20); }
+    if (done > seg.at) { g.fillStyle = "#19f6ff"; g.fillRect(x(seg.at), barTop, x(done) - x(seg.at), barH); }
+  }
+  if (trimmed()) {
+    // Outside the cut: dimmed. Each end of the cut is a pair of scissors over a dashed line.
+    // The parts being cut away: almost black, so it's obvious they won't be in the download.
+    g.fillStyle = "rgba(3,1,8,0.88)";
+    g.fillRect(0, top, x(trim.in), h - top); g.fillRect(x(trim.out), top, w - x(trim.out), h - top);
+    for (const which of ["in", "out"]) {
+      const hx = x(trim[which]), hot = trim.active === which || draggingHandle === which;
+      g.strokeStyle = hot ? "#ffe066" : "#ffcc33"; g.lineWidth = 2; g.setLineDash([5, 4]);
+      g.shadowColor = "#ffcc33"; g.shadowBlur = hot ? 12 : 4;
+      g.beginPath(); g.moveTo(hx, top - 4); g.lineTo(hx, h); g.stroke();
+      g.setLineDash([]); g.shadowBlur = 0;
+      drawScissors(g, Math.min(w - 16, Math.max(16, hx)), top / 2 + 5, hot);
+    }
   }
   g.fillStyle = "#fff"; g.shadowColor = "#19f6ff"; g.shadowBlur = 18;
-  g.fillRect(x(t) - 2, 0, 4, h); g.shadowBlur = 0;
+  g.fillRect(x(t) - 2, top, 4, h - top); g.shadowBlur = 0;
   if ("mediaSession" in navigator && navigator.mediaSession.setPositionState && player.duration) {
     try { navigator.mediaSession.setPositionState({ duration: player.duration, position: Math.min(player.duration, Math.max(0, t)) }); } catch (_) {}
   }
@@ -617,9 +740,10 @@ requestAnimationFrame(drawVU);
 $("download").addEventListener("click", async () => {
   const btn = $("download");
   try {
-    const check = await api(`/api/audio?${rangeQuery()}&check=1`);
+    const query = cutQuery(), cut = query !== rangeQuery();
+    const check = await api(`/api/audio?${query}&check=1`);
     const gaps = check.covered < check.requested;
-    const href = `/api/audio?${rangeQuery()}&download=1`;
+    const href = `/api/audio?${query}&download=1`;
     const startDownload = () => {
       const a = document.createElement("a");
       a.href = href; a.rel = "noopener";
@@ -631,7 +755,9 @@ $("download").addEventListener("click", async () => {
     const endDate = state.end <= state.start ? shiftDate(state.date, 1) : state.date;
     const day = new Date(`${state.date}T12:00`).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
     const title = show ? `${show.probable ? "Probably: " : ""}${show.name}` : "RBM FM · Off-Air";
-    const when = `${day} · ${hhmm(state.start)} → ${hhmm(state.end)}${endDate !== state.date ? " (+1)" : ""}`;
+    const when = cut
+      ? `${day} · ${hms(state.start * 60 + trim.in)} → ${hms(state.start * 60 + trim.out)}`
+      : `${day} · ${hhmm(state.start)} → ${hhmm(state.end)}${endDate !== state.date ? " (+1)" : ""}`;
     if (window.exportCassette) {
       // The show: stamp, label, ejection. The download starts as the cassette flies off.
       await window.exportCassette({ title, when, gaps, onDownload: startDownload });

@@ -85,18 +85,32 @@ def main():
         start = dt.datetime(int(year), int(month), int(day), int(hh), int(mm), int(ss), tzinfo=TZ)
         by_start.setdefault(start, []).append(path)
 
+    todo = []  # (start, path) to rename or split
     for start, paths in sorted(by_start.items()):
+        ambiguous = start.replace(fold=1).utcoffset() != start.utcoffset()
+        if len(paths) == 2 and ambiguous:
+            # The night daylight saving ends, the same local hour happens twice and the old
+            # logger named the second one "-1". Both are real: the one written first is the
+            # daylight-time hour (+1100), the other the standard-time hour (+1000).
+            first, second = sorted(paths, key=lambda p: p.stat().st_mtime)
+            print(f"DST both kept: {first.name} as {name_for(start)}, {second.name} as "
+                  f"{name_for(start.replace(fold=1))}")
+            todo += [(start, first), (start.replace(fold=1), second)]
+            continue
         if len(paths) > 1:
-            # A second, silent BUTT instance sometimes ran alongside the real one, and either
-            # copy (with or without "-N") can be the silent one. Keep the copy with audio.
+            # A second BUTT instance sometimes ran alongside the real one, and either copy
+            # (with or without "-N") can be the silent one. Keep the copy with audio; if both
+            # have audio, keep the longer one (it can run on for hours), then the louder.
             volumes = {p: mean_volume(p) for p in paths}
-            keep = max(paths, key=volumes.get)
+            lengths = {p: probe_duration(p) for p in paths}
+            audible = [p for p in paths if volumes[p] >= SILENT_DB] or paths
+            keep = max(audible, key=lambda p: (round(lengths[p] / 60), volumes[p]))
             for p in paths:
                 if p == keep:
                     continue
                 if volumes[p] >= SILENT_DB:
-                    print(f"CHECK both copies have audio, keeping louder {keep.name} "
-                          f"({volumes[keep]:.0f} dB) over {p.name} ({volumes[p]:.0f} dB)")
+                    print(f"CHECK both copies have audio, keeping {keep.name} ({lengths[keep] / 60:.0f} min, "
+                          f"{volumes[keep]:.0f} dB) over {p.name} ({lengths[p] / 60:.0f} min, {volumes[p]:.0f} dB)")
                 else:
                     print(f"REJECT silent copy ({volumes[p]:.0f} dB): {p.name}, keeping {keep.name}")
                 counts["reject"] += 1
@@ -106,7 +120,9 @@ def main():
             if volumes[keep] < SILENT_DB:
                 print(f"CHECK every copy is silent at {start:%Y-%m-%d %H:%M}; keeping {keep.name}")
             paths = [keep]
-        path = paths[0]
+        todo.append((start, paths[0]))
+
+    for start, path in todo:
         seconds = probe_duration(path)
         pieces = hour_pieces(start, seconds) if seconds > 3660 else [(0.0, start)]
         names = [name_for(moment) for _, moment in pieces]

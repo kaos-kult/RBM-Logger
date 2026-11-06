@@ -387,8 +387,9 @@ def live_start_point(at):
 
 
 def parse_local(text):
-    """'2026-11-05T20:00' (station local) -> aware datetime."""
-    return dt.datetime.strptime(text, "%Y-%m-%dT%H:%M").replace(tzinfo=TZ)
+    """'2026-11-05T20:00' or, for trimmed cuts, '2026-11-05T20:00:37' (station local)."""
+    fmt = "%Y-%m-%dT%H:%M:%S" if text.count(":") == 2 else "%Y-%m-%dT%H:%M"
+    return dt.datetime.strptime(text, fmt).replace(tzinfo=TZ)
 
 
 def ffmpeg_join(parts):

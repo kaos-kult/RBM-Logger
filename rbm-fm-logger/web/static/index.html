@@ -94,7 +94,22 @@
     <p id="status" class="msg" role="status"></p>
 
     <div id="transport" class="transport" hidden>
-      <canvas id="scrub" height="56" aria-label="Playback position. Click or drag to seek."></canvas>
+      <canvas id="scrub" height="98" tabindex="0" aria-label="Playback position. Click or drag to seek; drag the scissors to trim where the download starts and ends."></canvas>
+      <div class="row trim-row" id="trim-row" hidden>
+        <div class="trim-end">
+          <span class="trim-label">IN</span><span class="trim-time" id="trim-in">0:00:00</span>
+          <button class="btn btn-small" id="in-minus" type="button" aria-label="Move IN 1 second earlier">−1s</button>
+          <button class="btn btn-small" id="in-plus" type="button" aria-label="Move IN 1 second later">+1s</button>
+          <button class="btn btn-small" id="hear-in" type="button">▶ From IN</button>
+        </div>
+        <div class="trim-mid"><span id="trim-len"></span><button class="btn btn-small" id="trim-reset" type="button">Reset trim</button></div>
+        <div class="trim-end">
+          <button class="btn btn-small" id="hear-out" type="button">Hear OUT ◀</button>
+          <button class="btn btn-small" id="out-minus" type="button" aria-label="Move OUT 1 second earlier">−1s</button>
+          <button class="btn btn-small" id="out-plus" type="button" aria-label="Move OUT 1 second later">+1s</button>
+          <span class="trim-label">OUT</span><span class="trim-time" id="trim-out">0:00:00</span>
+        </div>
+      </div>
       <div class="row transport-row">
         <span class="clock" id="pos-clock" title="Time it went to air">--:--:--</span>
         <button class="btn btn-small" id="back300" aria-label="Back 5 minutes">−5m</button>
