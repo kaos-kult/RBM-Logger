@@ -21,12 +21,12 @@ MIN_FREE_GIB=30
 MIN_RETENTION_AGE_SECONDS=7200
 # Minimum archive the station must keep; urgent alert if low disk deletes newer audio.
 # Check the period that applies to your licence.
-REQUIRED_RETENTION_DAYS=42
+REQUIRED_RETENTION_DAYS=75
 # Age limits per source, in days. 0 = no limit: keep until low disk space forces the
 # oldest out (FM inside REQUIRED_RETENTION_DAYS and studio inside STUDIO_MIN_DAYS go last).
 FM_KEEP_DAYS=0
-STUDIO_KEEP_DAYS=0
-STUDIO_MIN_DAYS=0
+STUDIO_KEEP_DAYS=365
+STUDIO_MIN_DAYS=365
 # Studio recorder (rbm_studio.py): Dante device name and MP3 bitrate.
 DANTE_NAME=RBM-Logger
 STUDIO_BITRATE=192k

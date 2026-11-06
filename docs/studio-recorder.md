@@ -41,18 +41,20 @@ A **STUDIO / OFF-AIR** switch sits under the timeline, remembered per device. ST
 
 ## Retention
 
-One cleaner (in `rbm_logger.py`) handles both folders, so they can't fight over the disk. Settings in `/etc/rbm-logger.conf`:
+One cleaner (in `rbm_logger.py`) handles both folders, so they can't fight over the disk. Set on 6 Nov 2026, in `/etc/rbm-logger.conf`:
 
-| Setting | Default | Meaning |
+| Setting | Value | Meaning |
 |---|---|---|
-| `FM_KEEP_DAYS` | 0 | Delete off-air recordings older than this (0 = no limit) |
-| `STUDIO_KEEP_DAYS` | 0 | Delete studio recordings older than this (0 = no limit) |
-| `REQUIRED_RETENTION_DAYS` | 42 | Off-air recordings this new are deleted for space only as a last resort, with an urgent alert |
-| `STUDIO_MIN_DAYS` | 0 | Same, for the studio copy |
+| `STUDIO_KEEP_DAYS` | **365** | Studio recordings are deleted after a year |
+| `STUDIO_MIN_DAYS` | **365** | …and never earlier just to make space |
+| `FM_KEEP_DAYS` | **0** | No age limit on off-air recordings: they're kept as long as space allows |
+| `REQUIRED_RETENTION_DAYS` | **75** | Off-air recordings this new are deleted for space only as a last resort, with an urgent alert |
 
-With the limits at 0, nothing is deleted until free space drops below `MIN_FREE_GIB` (30 GiB); then the oldest recordings of either kind go first. Both sources together use about 4 GB a day: with 288 GB free on 6 Nov 2026, that's roughly 2 months before the oldest recordings (Jan 2026 off-air) start going.
+So the **studio copy is kept for a year at full quality** (192 kbps), and the **off-air recording for at least 75 days**. When free space drops below `MIN_FREE_GIB` (30 GiB), the oldest off-air recordings go first.
 
-**Still to decide:** how long to keep each. A suggestion: studio copy 1 year (what presenters want), off-air 90 days (the legal requirement is short: check the current Broadcasting Services Act and community licence conditions; it has been 6 weeks, or 60 days after a complaint). A year of studio plus 90 days of off-air is about 940 GB, which only just fits on the 1 TB RAID, so a lower studio bitrate (`STUDIO_BITRATE=160k`) or bigger disks would give headroom. Changing `FM_KEEP_DAYS` deletes old recordings straight away: copy anything worth keeping first.
+The numbers, at about 1.93 GiB a day per source: a year of studio is about 705 GiB, and the 916 GiB array keeps 30 GiB free, which leaves about 180 GiB, or roughly **90 days of off-air**, once the studio year has filled up (from Nov 2027). Until then, off-air is kept for longer. Deletions start in about 2 months from 6 Nov 2026, with the oldest off-air recordings (January 2026) going first: copy anything from early 2026 that's worth keeping before then.
+
+There's about 36 GiB of headroom over the 75-day guarantee. Anything else stored on the array eats into it, and if it runs out the urgent "RBM archive below required retention" alert fires. Bigger disks, or `STUDIO_BITRATE=160k`, would give more room.
 
 ## Common tasks
 

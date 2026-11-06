@@ -55,7 +55,7 @@ All alerts go to the **ntfy** app, on a private topic on ntfy.sh. The topic is `
 | RAID DEGRADED / UNKNOWN | A RAID disk failed or vanished | Recording continues on one disk. **Replace the disk promptly.** `cat /proc/mdstat` |
 | Disk warning: /dev/sdX (…) | A disk reports trouble before failing: new bad or pending sectors, SMART health failed, a failed self-test, or overheating (from `smartd`) | **Plan to replace that disk soon.** `sudo smartctl -a /dev/sdX` for details. Recording continues; the RAID still has the other disk |
 | Storage critically low | Under 30 GiB free and nothing old enough to delete | Free space or add storage now |
-| Archive below required retention | Low space forced deletion of recordings newer than 42 days | Add storage; the station may no longer meet its retention obligation |
+| Archive below required retention | Low space forced deletion of off-air recordings newer than 75 days | Add storage; the station may no longer meet its retention obligation |
 | RBM logger offline *(from Breeze)* | Breeze RMM lost contact with the machine | Power, network or crash. Check the PC on site |
 | RBM download page … / RBM download failed | A problem with the presenters' download page, not the recorder | See [download-page.md](download-page.md#alerts) |
 
@@ -98,7 +98,7 @@ Change settings: edit `/etc/rbm-logger.conf` with `sudo nano`, then restart. The
 | `BITRATE` | `192k` | MP3 bitrate |
 | `SILENCE_DB` / `SILENCE_SECONDS` | `-50` / `900` | Silence alert threshold and duration |
 | `MIN_FREE_GIB` | `30` | Free space to keep; oldest recordings are deleted below this |
-| `REQUIRED_RETENTION_DAYS` | `42` | Minimum archive to keep; alerts if low space eats into it. Check against licence conditions |
+| `REQUIRED_RETENTION_DAYS` | `75` | Minimum off-air archive to keep (set 6 Nov 2026; the legal minimum is shorter); alerts if low space eats into it. Retention of both sources: [studio-recorder.md](studio-recorder.md#retention) |
 | `NTFY_URL` | ntfy topic | Where alerts go |
 | `HEARTBEAT_URL` | empty | Optional external check-in monitor |
 | `BACKUP_DEST` | empty | rclone destination for off-site backup |
