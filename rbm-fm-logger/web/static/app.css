@@ -152,11 +152,11 @@ main { max-width: 980px; margin: 18px auto 30px; padding: 0 16px; }
   box-shadow: 0 0 0 6px #120a20, 0 0 0 8px var(--pink), 0 0 36px rgba(255,43,214,0.6), 0 12px 30px rgba(0,0,0,0.7); }
 .knob:active { cursor: grabbing; }
 .knob-cap { position: absolute; inset: 14px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 28%, #fff 0%, #cfc9e6 20%, #5d5679 70%, #2b2640 100%); }
+  background: radial-gradient(circle at 35% 28%, #b9b2d4 0%, #8a83a8 18%, #4d4769 62%, #241f36 100%); }
 /* The cap and its light stay put; only the pointer layer turns. */
 .knob-pointer { position: absolute; inset: 0; border-radius: 50%; }
 .knob-cap i { position: absolute; left: 50%; top: 8px; width: 6px; height: 30px; margin-left: -3px; border-radius: 3px;
-  background: var(--cyan); box-shadow: 0 0 12px var(--cyan); }
+  background: var(--cyan); box-shadow: 0 0 0 1px rgba(0,0,0,0.5), 0 0 12px var(--cyan); }
 .led-time { font-size: 1.9rem; width: 9ch; text-align: center; }
 
 .vu-unit { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: center; min-width: 280px; flex: 1; max-width: 480px; }
