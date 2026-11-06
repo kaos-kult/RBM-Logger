@@ -36,7 +36,7 @@ The FM off-air recorder (`rbm-logger`) doesn't depend on any of this. If the Dan
 
 A **STUDIO / OFF-AIR** switch sits under the timeline, remembered per device. STUDIO is the default.
 
-- **STUDIO:** the studio copy, with any holes filled from the off-air recording. Those stretches are **blue** on the timeline, the page says how much of a selection is off-air, and the off-air parts play and download **16 dB quieter** to roughly match the studio level (`WEB_OFFAIR_GAIN_DB` in `/etc/rbm-web.conf`). A download that mixes the two is re-encoded and named `…_PARTLY-OFFAIR.mp3`; with no studio copy at all it's just the off-air recording, named `RBMFM_…`. Everything before 6 Nov 2026 23:41 is off-air only.
+- **STUDIO:** the studio copy, with any holes filled from the off-air recording. Those stretches are **blue** on the timeline, the page says how much of a selection is off-air, and the off-air parts play and download **16 dB quieter** to roughly match the studio level (`WEB_OFFAIR_GAIN_DB` in `/etc/rbm-web.conf`). A download that mixes the two is re-encoded and named `…_PARTLY-OFFAIR.mp3`; with no studio copy at all it's just the off-air recording, named `RBMFM_…`. The studio copy starts on **4 Nov 2026 at 19:45** (see [Imported from BUTT](#imported-from-butt-4-6-nov-2026)); before that it's off-air only.
 - **OFF-AIR:** only what the FM receiver heard, gaps and faults included. Use this for complaints, ACMA, or checking what went to air.
 
 ## Retention
@@ -91,4 +91,18 @@ The logger user is in the `rbmlogger` and `systemd-journal` groups, so it can re
 
 ## Fallback: BUTT on the streamer
 
-BUTT on the streamer (CBAASTRM0908) also records the stream, in `C:\Users\Stream\Music\`. It doesn't reliably split hourly: on 6 Nov 2026 it ran one 25-hour file despite the setting being saved. If someone needs a clean copy from a time the studio recorder missed, cut it out of the BUTT file by hand (`split_butt_recordings.py` in the logger package, or ffmpeg). BUTT's recordings are of the stream, which leaves the studio before the transmitter link, so they're clean of link faults too.
+BUTT on the streamer (CBAASTRM0908) also records the stream, in `C:\Users\Stream\Music\`, at 44.1 kHz, 192 kbps. Its recordings are of the stream, which leaves the studio before the transmitter link, so they're clean of link faults too. Until 6 Nov 2026 it ignored its hourly-split setting and ran 25-hour files. After BUTT was restarted at 22:51 that night it has split on the hour.
+
+If the studio recorder misses a stretch, the BUTT copy can fill it, as was done for 4-6 Nov.
+
+## Imported from BUTT (4-6 Nov 2026)
+
+On 7 Nov 2026, the BUTT recordings from **4 Nov 19:45 to 7 Nov 00:00** were split into hourly `RBMSTUDIO_` files (57 files, 4.2 GB) and added to `/mnt/storage/studio`. That gives presenters a clean copy of the shows hit by the link dropouts. For 6 Nov 21:00–21:10, for example, the off-air recording has 749 dropouts and the BUTT copy none. These files are 44.1 kHz; the page converts them when a download mixes them with 48 kHz files. Holes left: 1 s at 5 Nov 21:46 (BUTT changing files) and 20 s at 6 Nov 22:51 (BUTT restarted). The page fills both from off-air.
+
+**Timing:** the streamer's sound card drifts from real time, by −149 s over 23.6 hours on 4-5 Nov and −6 s over 25 hours on 5-6 Nov. `split_butt_recordings.py` spreads each file's drift evenly between its start and the next file's start. `butt_align.py` checked the result against the FM recording at 9 points: every one was within 3 seconds, and most were within 1 second.
+
+**To do it again** (for example if the studio recorder fails for a while):
+1. Copy the BUTT files to the logger. For a large copy, use a temporary key: make one on the logger with `ssh-keygen -t ed25519 -f ~/.ssh/streamer_import`, and add its public key to the streamer's `C:\ProgramData\ssh\administrators_authorized_keys` prefixed with `from="10.1.2.198"`. Then `scp -i ~/.ssh/streamer_import Stream@10.1.2.41:C:/Users/Stream/Music/rec_….mp3 .`. **Remove the key from both machines afterwards.**
+2. Check the timing: `butt_align.py rec_FILE.mp3 NEXT_START YYYYMMDDTHH:MM …` prints the error at each moment.
+3. Dry run, then apply: `split_butt_recordings.py out rec_*.mp3 --ends-at YYYYMMDD-HHMMSS --prefix RBMSTUDIO [--apply]`. A file that ended well before the next one began (BUTT stopped by hand) should be split **on its own**, without the next file's start time, or its length gets stretched.
+4. `sudo chown rbmlogger:rbmlogger out/*.mp3 && sudo chmod 0640 out/*.mp3 && sudo mv -n out/*.mp3 /mnt/storage/studio/`. `-n` never overwrites the studio recorder's own files. Where the two overlap, the page uses each one up to where the next starts.

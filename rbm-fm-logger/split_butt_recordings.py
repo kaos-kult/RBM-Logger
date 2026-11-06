@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 """Split long BUTT recordings (rec_YYYYMMDD-HHMMSS.mp3, station local time) into
-clock-hour RBMFM_ files, without re-encoding.
+clock-hour RBMFM_ files (or, with --prefix RBMSTUDIO, studio-copy files), without
+re-encoding.
 
-Usage: split_butt_recordings.py OUT_DIR FILE... [--ends-at YYYYMMDD-HHMMSS] [--apply]
+Usage: split_butt_recordings.py OUT_DIR FILE... [--ends-at YYYYMMDD-HHMMSS]
+                                [--prefix RBMFM|RBMSTUDIO] [--apply]
 Dry run by default: prints the planned output files. Existing outputs are never overwritten.
 
 The sound card's clock drifts from the PC clock, so a long file's audio can be a few
 minutes shorter or longer than the wall-clock time it covered. When the real end time is
 known (the next file's start, or --ends-at for the last file), cut points are spread
-evenly over the drift so each cut lands on the real clock hour.
+evenly over the drift so each cut lands on the real clock hour. (Checked against the FM
+recording on 7 Nov 2026: within about 3 s through 25-hour files.)
+
+BUTT records the stream, which leaves the studio before the transmitter link, so its
+files are a clean studio copy: on 7 Nov 2026 the 4-6 Nov BUTT recordings were imported
+into /mnt/storage/studio with --prefix RBMSTUDIO.
 """
 import datetime as dt
 from pathlib import Path
@@ -19,6 +26,7 @@ import tempfile
 from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("Australia/Sydney")
+PREFIX = "RBMFM"
 BUTT_NAME = re.compile(r"^rec_(\d{8}-\d{6})\.mp3$")
 
 
@@ -59,7 +67,7 @@ def plan(path, real_end=None):
 
 
 def name_for(moment):
-    return moment.strftime("RBMFM_%Y%m%dT%H%M%S%z.mp3")
+    return moment.strftime(f"{PREFIX}_%Y%m%dT%H%M%S%z.mp3")
 
 
 def split(path, out_dir, pieces):
@@ -81,7 +89,14 @@ def split(path, out_dir, pieces):
 
 
 def main():
+    global PREFIX
     args = sys.argv[1:]
+    if "--prefix" in args:
+        i = args.index("--prefix")
+        PREFIX = args[i + 1]
+        if PREFIX not in ("RBMFM", "RBMSTUDIO"):
+            raise SystemExit("--prefix must be RBMFM or RBMSTUDIO")
+        del args[i:i + 2]
     apply = "--apply" in args
     args = [a for a in args if a != "--apply"]
     last_end = None
