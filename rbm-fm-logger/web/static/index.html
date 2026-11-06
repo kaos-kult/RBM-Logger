@@ -94,19 +94,30 @@
 
     <div id="transport" class="transport" hidden>
       <canvas id="scrub" height="108" tabindex="0" aria-label="Playback position. Click or drag to seek; drag the scissors to trim where the download starts and ends."></canvas>
-      <div class="row trim-row" id="trim-row" hidden>
-        <div class="trim-end">
-          <span class="trim-label">IN</span><span class="trim-time" id="trim-in">0:00:00</span>
-          <button class="btn btn-small" id="in-minus" type="button" aria-label="Move IN 1 second earlier">−1s</button>
-          <button class="btn btn-small" id="in-plus" type="button" aria-label="Move IN 1 second later">+1s</button>
-          <button class="btn btn-small" id="hear-in" type="button">▶ From IN</button>
+      <div class="trim-row" id="trim-row" hidden>
+        <div class="trim-end trim-in">
+          <div class="trim-head"><span class="trim-label">✂ IN</span><span class="trim-time" id="trim-in">0:00:00</span></div>
+          <div class="trim-controls">
+            <div class="nudge" role="group" aria-label="Nudge IN">
+              <button class="btn" id="in-minus" type="button" aria-label="Move IN 1 second earlier">−1s</button>
+              <button class="btn" id="in-plus" type="button" aria-label="Move IN 1 second later">+1s</button>
+            </div>
+            <button class="btn btn-small trim-preview" id="hear-in" type="button">▶ From IN</button>
+          </div>
         </div>
-        <div class="trim-mid"><span id="trim-len"></span><button class="btn btn-small" id="trim-reset" type="button">Reset trim</button></div>
-        <div class="trim-end">
-          <button class="btn btn-small" id="hear-out" type="button">Hear OUT ◀</button>
-          <button class="btn btn-small" id="out-minus" type="button" aria-label="Move OUT 1 second earlier">−1s</button>
-          <button class="btn btn-small" id="out-plus" type="button" aria-label="Move OUT 1 second later">+1s</button>
-          <span class="trim-label">OUT</span><span class="trim-time" id="trim-out">0:00:00</span>
+        <div class="trim-mid">
+          <span id="trim-len"></span>
+          <button class="btn btn-small" id="trim-reset" type="button">Reset trim</button>
+        </div>
+        <div class="trim-end trim-out">
+          <div class="trim-head"><span class="trim-time" id="trim-out">0:00:00</span><span class="trim-label">OUT ✂</span></div>
+          <div class="trim-controls">
+            <button class="btn btn-small trim-preview" id="hear-out" type="button">Hear OUT ◀</button>
+            <div class="nudge" role="group" aria-label="Nudge OUT">
+              <button class="btn" id="out-minus" type="button" aria-label="Move OUT 1 second earlier">−1s</button>
+              <button class="btn" id="out-plus" type="button" aria-label="Move OUT 1 second later">+1s</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="row transport-row">
