@@ -17,7 +17,8 @@ A password-protected web page where presenters can listen to, or download, any s
 2. Choose the **broadcast date**. The strip shows that day from midnight to 06:00 the next morning: green is recorded, red hatching is missing.
 3. **Click a show** in the gold row along the top of the strip to select exactly that show (names too long for their box scroll). Or drag across the strip to choose any range, or set **START** and **END** precisely by turning the dials (one turn = 2 hours, 5-minute clicks; hold Shift for 1-minute steps) or typing the times. An end earlier than the start means the next day, so 23:00–01:00 works.
 4. **▶ LISTEN** plays the range in the browser, with a scrub bar, skip buttons and a clock showing when it went to air. Missing stretches are skipped automatically.
-5. **DOWNLOAD** saves the range as one MP3, up to 6 hours long, after a short and entirely unnecessary cassette ceremony: a tape is labelled, stamped and ejected. Click or press any key to skip it; the download never waits for it.
+5. **● LIVE** plays what's on air right now, about 6 seconds behind, straight from the logger. It works like a DVR: **pause** and it waits for you, **−30s / −5m** or the scrub bar (the last 6 hours) to go back, and **⏭ LIVE** to catch up again. The clock shows when the audio you're hearing went to air, and "−0:02:31 behind live" when you're behind. It never runs out: it carries on across the hourly files by itself.
+6. **DOWNLOAD** saves the range as one MP3, up to 6 hours long, after a short and entirely unnecessary cassette ceremony: a tape is labelled, stamped and ejected. Click or press any key to skip it; the download never waits for it.
    - If the range is essentially one show (at least 80% overlap both ways), the file is named after it, for example `RBMFM_Strange-Brew-Breakfast_20261105_0700-0900.mp3`. Otherwise it's named by time, for example `RBMFM_20261105T0700-20261105T0930.mp3`.
    - If part of the range was never recorded, the page warns you first, the stamp reads **INCOMPLETE — SOME RADIO MAY BE MISSING**, and the file name ends in `_INCOMPLETE`.
 
@@ -41,6 +42,7 @@ Presenter ──https──> Cloudflare proxy ──https :8443──> routers �
                      (origin rule)                                 on the logger
 ```
 
+- **Live** (`/api/live?at=<time>`) streams the archive from any moment and **never ends**: at the end of the file the recorder is still writing, it waits for more, and at the top of the hour it carries on into the next file. Each stream starts on an MP3 frame boundary. Pausing on the page drops the stream and remembers the moment; play opens a new stream from there. Up to 12 live listeners at once (`WEB_MAX_LIVE`), each stream capped at 12 hours, and a stream gives up if the recorder writes nothing for 2 minutes.
 - **Listening** streams the original recording files one after another, with HTTP range requests so seeking is instant. Nothing is converted.
 - **Downloading** joins the files for the range with ffmpeg. Where every file has the same format (all 48 kHz logger files, or all 44.1 kHz streamer files), the audio is copied unchanged and a 6-hour file takes seconds. A range crossing between the two formats is converted to 48 kHz, for that download only.
 - Where two recordings overlap (for example, the streamer and logger copies on 5 Nov 2026), each one is used only up to where the next starts, so nothing plays twice.

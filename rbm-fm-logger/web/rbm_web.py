@@ -66,6 +66,10 @@ ALERT_REPEAT_SECONDS = 3600
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("rbm-web")
 jobs = threading.BoundedSemaphore(MAX_JOBS)
+# Live listening only reads files, so it's cheap, but still capped.
+MAX_LIVE = int(os.environ.get("WEB_MAX_LIVE", "12"))
+LIVE_MAX_HOURS = 12
+live_slots = threading.BoundedSemaphore(MAX_LIVE)
 last_alert = {}
 alert_lock = threading.Lock()
 
@@ -316,6 +320,72 @@ def slug(text):
     return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-")[:60] or "Show"
 
 
+# --- Live listening ------------------------------------------------------------------
+# Streams the archive from any moment onward and keeps going: when it reaches the end of
+# the file the recorder is still writing, it waits for more, and at the top of each hour
+# it carries on into the next file. That gives the page DVR-style live listening.
+
+def id3_length(f):
+    """Bytes of ID3v2 tag at the start of an MP3 (skipped so tags don't land mid-stream)."""
+    head = f.read(10)
+    f.seek(0)
+    if len(head) == 10 and head[:3] == b"ID3":
+        return 10 + ((head[6] & 0x7F) << 21 | (head[7] & 0x7F) << 14 | (head[8] & 0x7F) << 7 | (head[9] & 0x7F))
+    return 0
+
+
+MP3_BITRATES = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]
+MP3_RATES = {0: 44100, 1: 48000, 2: 32000}
+
+
+def frame_start(f, offset):
+    """Move `offset` forward to the next MPEG-1 Layer III frame boundary, checked by
+    finding a second frame header exactly one frame later, so a stream never begins
+    mid-frame (which some players and probes reject)."""
+    f.seek(offset)
+    buf = f.read(8192)
+    for i in range(len(buf) - 4):
+        if buf[i] != 0xFF or (buf[i + 1] & 0xFE) != 0xFA:  # sync, MPEG-1, Layer III
+            continue
+        rate_i, rate_s, pad = buf[i + 2] >> 4, (buf[i + 2] >> 2) & 3, (buf[i + 2] >> 1) & 1
+        if not 0 < rate_i < 15 or rate_s not in MP3_RATES:
+            continue
+        length = 144000 * MP3_BITRATES[rate_i] // MP3_RATES[rate_s] + pad
+        j = i + length
+        if j + 1 < len(buf) and buf[j] == 0xFF and (buf[j + 1] & 0xFE) == 0xFA:
+            return offset + i
+    return offset
+
+
+def next_recording(after):
+    """The recording that starts soonest after `after` (names only, so it's quick)."""
+    best = None
+    with os.scandir(RECORDINGS) as entries:
+        for entry in entries:
+            match = FILE_NAME.fullmatch(entry.name)
+            if match:
+                start = dt.datetime.strptime(match.group(1), "%Y%m%dT%H%M%S%z")
+                if start > after and (best is None or start < best[0]):
+                    best = (start, Path(entry.path))
+    return best
+
+
+def live_start_point(at):
+    """(path, start, byte offset) to begin a live stream at `at`, or None."""
+    recs = recordings()
+    for rec in reversed(recs):
+        if rec.start <= at:
+            if at < rec.end + dt.timedelta(seconds=GAP_TOLERANCE) or rec is recs[-1]:
+                return rec.path, rec.start, (at - rec.start).total_seconds()
+            break
+    # In a gap, or newer than the index knows: start at the next recording.
+    nxt = next_recording(at - dt.timedelta(hours=2)) if not recs or at > recs[-1].start else None
+    if nxt is None:
+        later = [r for r in recs if r.start > at]
+        return (later[0].path, later[0].start, 0.0) if later else None
+    return nxt[1], nxt[0], max(0.0, (at - nxt[0]).total_seconds())
+
+
 def parse_local(text):
     """'2026-11-05T20:00' (station local) -> aware datetime."""
     return dt.datetime.strptime(text, "%Y-%m-%dT%H:%M").replace(tzinfo=TZ)
@@ -453,6 +523,14 @@ class Handler(BaseHTTPRequestHandler):
                     "probable": sh["probable"], "schedule": sh["schedule"]} for sh in shows]})
             if url.path == "/api/segments":
                 return self.segments(parse_local(query["start"]), parse_local(query["end"]))
+            if url.path == "/api/live":
+                at = dt.datetime.fromtimestamp(float(query["at"]), TZ)
+                if query.get("check") == "1":
+                    # Where a stream asked to start at `at` really starts (gaps skip ahead).
+                    point = live_start_point(min(at, dt.datetime.now(TZ)))
+                    return self.send_json(HTTPStatus.OK if point else HTTPStatus.NOT_FOUND,
+                                          {"start": point[1].timestamp() + point[2]} if point else {"error": "nothing recorded"})
+                return self.live(at)
             if url.path == "/api/file":
                 return self.recording_file(query["id"])
         except (KeyError, ValueError):
@@ -522,6 +600,54 @@ class Handler(BaseHTTPRequestHandler):
             "segments": [{"id": rec.path.name, "in": round(a, 3), "out": round(b, 3),
                           "at": round((rec.start - start).total_seconds() + a, 3)}
                          for rec, a, b in parts]})
+
+    def live(self, at):
+        point = live_start_point(min(at, dt.datetime.now(TZ)))
+        if point is None:
+            return self.send_json(HTTPStatus.NOT_FOUND, {"error": "nothing recorded from then on"})
+        if not live_slots.acquire(blocking=False):
+            return self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "too many live listeners, try again shortly"})
+        path, start, seconds = point
+        try:
+            self.send_response(HTTPStatus.OK)
+            self.common_headers()
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Cache-Control", "no-store")
+            # Where the stream really starts, so the page can show the right clock time.
+            self.send_header("X-RBM-Live-Start", f"{start.timestamp() + seconds:.3f}")
+            self.end_headers()
+            log.info("LIVE %s from %s (%s +%ds)", self.client_ip(), at, path.name, seconds)
+            deadline = time.monotonic() + LIVE_MAX_HOURS * 3600
+            f = path.open("rb")
+            # Never start past the audio that exists (e.g. the recorder has stopped):
+            # begin a couple of seconds before the end instead of waiting in silence.
+            size = path.stat().st_size
+            offset = min(id3_length(f) + int(seconds * BYTES_PER_SECOND), max(0, size - int(2 * BYTES_PER_SECOND)))
+            f.seek(frame_start(f, offset))
+            waited = 0.0
+            while time.monotonic() < deadline:
+                chunk = f.read(32768)
+                if chunk:
+                    self.wfile.write(chunk)
+                    waited = 0.0
+                    continue
+                # End of this file: move on if the next one has started, else wait for more.
+                nxt = next_recording(start)
+                if nxt and (nxt[1].stat().st_size > 0):
+                    f.close()
+                    start, path = nxt
+                    f = path.open("rb")
+                    f.seek(id3_length(f))
+                    continue
+                if waited > 120:
+                    break  # The recorder has stopped; the page reconnects later.
+                time.sleep(0.5)
+                waited += 0.5
+            f.close()
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            pass  # The listener paused, skipped or closed the page.
+        finally:
+            live_slots.release()
 
     def recording_file(self, name):
         """One recording, with HTTP Range support so the browser can seek within it.

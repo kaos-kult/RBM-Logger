@@ -88,6 +88,7 @@
 
     <div class="row actions">
       <button class="btn btn-cyan" id="audition">▶ LISTEN</button>
+      <button class="btn btn-live" id="live" type="button" title="Listen to what's on air now, with pause and rewind">● LIVE</button>
       <button class="btn btn-mega" id="download"><span>DOWNLOAD</span></button>
     </div>
     <p id="status" class="msg" role="status"></p>
@@ -102,6 +103,7 @@
         <button class="btn btn-small" id="fwd30" aria-label="Forward 30 seconds">+30s</button>
         <button class="btn btn-small" id="fwd300" aria-label="Forward 5 minutes">+5m</button>
         <span class="clock dim" id="pos-elapsed">0:00:00 / 0:00:00</span>
+        <button class="btn btn-small btn-golive" id="golive" type="button" hidden>⏭ LIVE</button>
       </div>
     </div>
     <audio id="player-a" preload="auto"></audio>

@@ -340,7 +340,63 @@ const segEnd = (s) => s.at + (s.out - s.in);
 const fmt = (t) => { t = Math.max(0, Math.floor(t)); return `${Math.floor(t / 3600)}:${pad(Math.floor(t / 60) % 60)}:${pad(t % 60)}`; };
 const clockAt = (t) => { const x = Math.floor(player.startSec + t); return `${pad(Math.floor(x / 3600) % 24)}:${pad(Math.floor(x / 60) % 60)}:${pad(x % 60)}`; };
 
+// ---------- Live mode: DVR-style listening from the recorder's newest audio ----------
+// The server streams from any moment onward and keeps going as the recorder writes, so
+// playback never runs out. Pausing drops the stream and remembers the moment; play picks
+// up from there, so you can pause, rewind, then catch up with "⏭ LIVE".
+const LIVE_WINDOW = 6 * 3600;   // the scrub bar covers the last 6 hours
+const LIVE_DELAY = 6;           // seconds behind real time (the recorder's own buffering)
+const live = { on: false, base: 0, pausedAt: null, retry: 0 };
+const nowSec = () => Date.now() / 1000;
+const liveWindowStart = () => nowSec() - LIVE_WINDOW;
+const livePos = () => live.pausedAt ?? live.base + decks[0].currentTime;  // epoch seconds
+const secondsOfDay = (epoch) => { const d = new Date(epoch * 1000); return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds(); };
+async function liveGo(epoch) {
+  epoch = Math.max(liveWindowStart(), Math.min(epoch, nowSec() - LIVE_DELAY));
+  const el = decks[0];
+  el.pause();
+  try {
+    const point = await api(`/api/live?at=${epoch.toFixed(1)}&check=1`);
+    if (point.start > epoch + 5) status(`Nothing recorded at that moment, so jumped ahead to the next recording`);
+    epoch = point.start;
+  } catch (err) { if (err.message === "login") return; status(err.message, true); }
+  live.base = epoch; live.pausedAt = null;
+  delete el.dataset.id;
+  el.src = `/api/live?at=${epoch.toFixed(1)}`;
+  if (player.playing) await el.play().catch(() => {});
+}
+async function startLive() {
+  wireAnalysers();
+  decks.forEach((el) => { el.pause(); delete el.dataset.id; });
+  Object.assign(player, { segs: [], duration: LIVE_WINDOW, seg: -1, deck: 0 });
+  live.on = true; live.retry = 0;
+  $("live").classList.add("on");
+  $("transport").hidden = false;
+  status("Live from the logger, a few seconds behind the air. Pause and rewind as you like.");
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: "RBM FM, live", artist: "Radio Blue Mountains" });
+  }
+  player.playing = true;
+  await liveGo(nowSec() - LIVE_DELAY);
+  await setPlaying(true);
+  $("transport").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+function stopLive() { live.on = false; live.pausedAt = null; $("live").classList.remove("on"); $("golive").hidden = true; }
+$("live").addEventListener("click", () => { blip(1200); blip(1800); startLive(); });
+$("golive").addEventListener("click", () => { blip(2000); liveGo(nowSec() - LIVE_DELAY); });
+// If the stream ends or breaks (network blip, recorder restart), pick up where it was.
+for (const ev of ["ended", "error", "stalled"]) {
+  decks[0].addEventListener(ev, () => {
+    if (!live.on || !player.playing || live.retry > 20) return;
+    live.retry++;
+    const at = livePos();
+    setTimeout(() => { if (live.on && player.playing) liveGo(at); }, Math.min(10000, 1000 * live.retry));
+  });
+}
+decks[0].addEventListener("playing", () => { live.retry = 0; });
+
 function position() {
+  if (live.on) return livePos() - liveWindowStart();
   const s = player.segs[player.seg];
   return s ? s.at + (deck().currentTime - s.in) : 0;
 }
@@ -366,6 +422,7 @@ async function goTo(index, offset) {
   preloadNext();
 }
 async function seek(t) {
+  if (live.on) return liveGo(liveWindowStart() + t);
   if (!player.segs.length || player.busy) return;
   player.busy = true;
   try {
@@ -391,13 +448,23 @@ async function setPlaying(on) {
   player.playing = on;
   $("play").textContent = on ? "❚❚" : "▶";
   $("play").setAttribute("aria-label", on ? "Pause" : "Play");
-  if (on) { await audioCtx().resume(); await deck().play().catch(() => {}); } else deck().pause();
+  if (live.on) {
+    if (on) {
+      await audioCtx().resume();
+      if (live.pausedAt !== null) await liveGo(live.pausedAt); else await decks[0].play().catch(() => {});
+    } else {
+      // Drop the stream while paused; play resumes from this exact moment.
+      live.pausedAt = livePos();
+      decks[0].pause(); decks[0].removeAttribute("src"); decks[0].load();
+    }
+  } else if (on) { await audioCtx().resume(); await deck().play().catch(() => {}); } else deck().pause();
   if ("mediaSession" in navigator) navigator.mediaSession.playbackState = on ? "playing" : "paused";
 }
 
 $("audition").addEventListener("click", async () => {
   try {
     const data = await api(`/api/segments?${rangeQuery()}`);
+    stopLive();
     wireAnalysers();
     decks.forEach((el) => { el.pause(); delete el.dataset.id; });
     Object.assign(player, { segs: data.segments, duration: data.duration, seg: -1, deck: 0, startSec: state.start * 60 });
@@ -418,12 +485,13 @@ for (const [id, delta] of [["back300", -300], ["back30", -30], ["fwd30", 30], ["
 // Hand over to the next file at this piece's out point. Checked on timeupdate as well as
 // every frame, because background tabs stop animation frames but keep playing audio.
 function checkHandover() {
+  if (live.on) return;
   const s = player.segs[player.seg];
   if (player.playing && !player.busy && s && deck().currentTime >= s.out - 0.04) advance();
 }
 decks.forEach((el) => {
-  el.addEventListener("ended", () => { if (el === deck() && !player.busy) advance(); });
-  el.addEventListener("timeupdate", () => { if (el === deck()) checkHandover(); });
+  el.addEventListener("ended", () => { if (!live.on && el === deck() && !player.busy) advance(); });
+  el.addEventListener("timeupdate", () => { if (!live.on && el === deck()) checkHandover(); });
 });
 addEventListener("keydown", (e) => {
   if (e.key !== " " || $("transport").hidden || e.target.closest("input, button, [role=slider]")) return;
@@ -440,7 +508,10 @@ if ("mediaSession" in navigator) {
 // Scrub bar: recorded parts, gaps, progress and a glowing playhead. Click or drag to seek.
 const scrub = $("scrub");
 let scrubbing = null;
-const scrubTime = (e) => { const r = scrub.getBoundingClientRect(); return ((e.clientX - r.left) / r.width) * player.duration; };
+const scrubTime = (e) => {
+  const r = scrub.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * player.duration;
+};
 scrub.addEventListener("pointerdown", (e) => { scrub.setPointerCapture(e.pointerId); scrubbing = scrubTime(e); });
 scrub.addEventListener("pointermove", (e) => {
   if (scrubbing === null) return;
@@ -456,9 +527,17 @@ function drawTransport() {
   requestAnimationFrame(drawTransport);
   if ($("transport").hidden) return;
   checkHandover();
+  if (live.on) player.startSec = secondsOfDay(liveWindowStart());
   const t = scrubbing ?? position();
   $("pos-clock").textContent = clockAt(t);
-  $("pos-elapsed").textContent = `${fmt(t)} / ${fmt(player.duration)}`;
+  if (live.on) {
+    const behind = nowSec() - (scrubbing !== null ? liveWindowStart() + scrubbing : livePos());
+    const atLive = behind < LIVE_DELAY + 12 && live.pausedAt === null;
+    $("pos-elapsed").textContent = atLive ? "● LIVE" : `−${fmt(behind)} behind live`;
+    $("golive").hidden = atLive;
+  } else {
+    $("pos-elapsed").textContent = `${fmt(t)} / ${fmt(player.duration)}`;
+  }
   const dpr = devicePixelRatio || 1, w = scrub.clientWidth, h = scrub.clientHeight;
   if (scrub.width !== w * dpr) { scrub.width = w * dpr; scrub.height = h * dpr; }
   const g = scrub.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -466,6 +545,13 @@ function drawTransport() {
   g.fillStyle = "#14040a"; g.fillRect(0, 0, w, h);
   g.strokeStyle = "rgba(255,51,85,0.45)"; g.lineWidth = 2;
   for (let i = -h; i < w; i += 9) { g.beginPath(); g.moveTo(i, h); g.lineTo(i + h, 0); g.stroke(); }
+  if (live.on) {
+    // The last 6 hours: listened-to part in cyan, the rest available up to now.
+    g.fillStyle = "#123a24"; g.fillRect(0, 10, w, h - 20);
+    g.fillStyle = "#19f6ff"; g.fillRect(0, 10, Math.max(0, x(t)), h - 20);
+    g.fillStyle = "#ff3355"; g.fillRect(w - 3, 4, 3, h - 8);
+    g.font = "bold 10px ui-monospace, monospace"; g.fillStyle = "#ffb3c1"; g.fillText("NOW", w - 30, 12);
+  }
   for (const seg of player.segs) {
     g.fillStyle = "#123a24"; g.fillRect(x(seg.at), 10, x(segEnd(seg)) - x(seg.at), h - 20);
     const done = Math.min(segEnd(seg), t);
