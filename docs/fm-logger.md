@@ -106,7 +106,8 @@ Change settings: edit `/etc/rbm-logger.conf` with `sudo nano`, then restart. The
 
 | Period | Source | Notes |
 |---|---|---|
-| 7 May 2026 09:46 → 4 Nov 2026 20:00 | Old logger (BUTT), from the portable drive on STUDIOB | 30-minute files, 48 kHz. *Import in progress* (see below) |
+| 1 Jan 2026 00:00 → 7 May 2026 01:00 | Old logger (BUTT), portable drive folder `Logs 2026` | 30-minute files, 48 kHz. Imported 6 Nov 2026 |
+| 7 May 2026 09:46 → 4 Nov 2026 20:00 | Old logger (BUTT), portable drive folder `LOGS 20260507` | 30-minute files, 48 kHz. Imported 6 Nov 2026. About 8¾ hours missing on the morning of 7 May, between the two folders |
 | 4 Nov 2026 19:45 → 5 Nov 21:46 | Streamer (BUTT), split into hourly files | 44.1 kHz. Cut points corrected for the sound card's drift (about 2.5 min per day) |
 | 5 Nov 2026 21:35 onward | This logger | 48 kHz. Overlaps the streamer by about 10 minutes |
 
@@ -126,12 +127,18 @@ The download page shows these as red hatching. 4 Oct 2026 has no recording betwe
 
 On 22–23 June 2026 the old logger ran two copies of BUTT, and one was recording silence. Wherever two files share a start time, the import keeps the one with audio and sets the silent copy aside.
 
-### Importing the old recordings
+### Older recordings not on the logger
+
+The portable drive (on STUDIOB) also holds 2019, Jan–Apr 2020, a patchy Jul–Dec 2021, 22 Jul–8 Oct 2025 and 9–31 Dec 2025: about 1.1 TB, too much for the logger's RAID. They stay on the drive until the off-site backup exists.
+
+### Importing the old recordings (done 6 Nov 2026)
+
+14,336 files were imported. Both 2 am hours of 5 Apr 2026, the night daylight saving ended, are kept: the old logger named the second one `-1`. 40 silent copies (22–23 Jun) and 14 duplicate copies (16 Aug) were set aside in `/mnt/storage/import/rejected/`; delete that folder when you're happy. The steps, for any future import:
 
 1. Copy from STUDIOB to `/mnt/storage/import` with `~/pull.sh` on the logger (a copy is `rbm-fm-logger/pull_old_logs.sh`). It can be re-run, and skips files already copied.
 2. Rename to `RBMFM_` names with `import_old_logs.py /mnt/storage/import` (dry run first, then `--apply`). This also splits over-long files on the hour and sets silent duplicates aside in `import/rejected/`.
 3. Move into `recordings/` and set ownership to `rbmlogger`, mode 0640.
-4. Remove the temporary key `~/.ssh/studiob_import` from STUDIOB (see [ssh-access.md](ssh-access.md)).
+4. If a temporary key was used for the copy, remove it from the source machine afterwards (done for STUDIOB, 6 Nov 2026).
 
 Tonight's first logger recordings (5 Nov 20:27–21:35) were replaced by the streamer's copies, which have no reboot gaps. The originals are in `/mnt/storage/replaced/`.
 
@@ -268,7 +275,7 @@ The setup records, recovers by itself, alerts, and is documented. These are the 
 **Most important.** The RAID protects against **one disk** failing. It doesn't protect against fire, theft, flood, a surge that kills both disks, accidental deletion, or the logger being compromised through the download page.
 
 - Everything since 4 Nov 2026 exists **only on the logger**.
-- The six months before that exist on the logger and on **one portable drive** attached to STUDIOB.
+- 1 Jan–4 Nov 2026 exists on the logger and on **one portable drive** attached to STUDIOB, and 2019–2025 only on that drive.
 
 **Plan:** rclone to the RBM SharePoint once there's access, with automatic deletion of old files there (see [Off-site backup](#off-site-backup)). **Until then,** copying `/mnt/storage/recordings` to a USB drive kept off-site every week or two would cover most of the risk.
 
@@ -307,7 +314,7 @@ These belong to Kaos personally, not to the station. Move them before Kaos steps
 
 ### 5. Other open items
 
-- **The old-logs import isn't finished.** It's being copied from STUDIOB. Afterwards: copy the 2 files that failed again (6 Sep and 6 Oct 2026, 02:00), rename, move into the archive, and **remove the logger's temporary key from STUDIOB** (see [ssh-access.md](ssh-access.md)).
+- **Older archives (2019–2025)** exist only on one portable drive. They need to go somewhere safe once the off-site backup exists.
 - **Shared presenter password,** so the download page can't tell who listened to or downloaded what. Fine for now. Individual logins would be needed if there's ever a reason to audit access.
 - **Listening and downloads go through Cloudflare's proxy,** because the ISP blocks 80 and 443 and the origin rule gives a clean address. That depends on Cloudflare's free plan and terms. The alternative, going direct with `:8443` in the address, is in [download-page.md](download-page.md#network-and-certificates).
 - **The Caddy build needs manual updates** (see [Security updates](#security-updates)).

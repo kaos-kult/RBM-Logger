@@ -14,7 +14,6 @@ Mac ──internet──> router :2222 ──> logger (10.1.2.198) ──LAN─�
 | `streamer` | CBAASTRM0908 (Windows) | 10.1.2.41 | `Stream` | Reached via the logger |
 | `studiob` | STUDIOB (Windows) | 10.1.2.98 | `Engineer` | Reached via the logger. Holds the old logger's recordings drive (`D:\LOGS 20260507`). SSH server installed from Microsoft's GitHub release (Windows Update install hung) |
 
-**Temporary:** the logger has its own key (`~/.ssh/studiob_import`, labelled `logger-import-to-studiob`) authorised on STUDIOB for the old-logs import, restricted to connections from `10.1.2.198`. Remove that line from STUDIOB's `C:\ProgramData\ssh\administrators_authorized_keys` once the import is done.
 
 ## Router port forwards
 
