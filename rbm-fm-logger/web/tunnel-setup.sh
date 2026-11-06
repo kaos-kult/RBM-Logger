@@ -44,7 +44,9 @@ if ! command -v cloudflared >/dev/null; then
   apt-get install -y cloudflared
 fi
 cloudflared --version
-install -d -m 0700 /etc/cloudflared
+# The folder is readable so the unprivileged service can read its config (no secrets in
+# it); the credentials and token files inside stay root-only (0600).
+install -d -m 0755 /etc/cloudflared
 umask 077
 dropin=/etc/systemd/system/rbm-tunnel.service.d
 install -d -m 0755 "$dropin"
