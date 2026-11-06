@@ -43,7 +43,9 @@ import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
 
-RECORDINGS = Path(os.environ.get("RAID_MOUNT", "/mnt/storage")) / os.environ.get("WEB_RECORDINGS_SUBDIR", "recordings")
+MOUNT = Path(os.environ.get("RAID_MOUNT", "/mnt/storage"))
+RECORDINGS = MOUNT / os.environ.get("WEB_RECORDINGS_SUBDIR", "recordings")
+STUDIO_DIR = MOUNT / os.environ.get("STUDIO_SUBDIR", "studio")
 STATIC = Path(os.environ.get("WEB_STATIC", Path(__file__).resolve().parent / "static"))
 TZ = ZoneInfo(os.environ.get("STATION_TZ", "Australia/Sydney"))
 LISTEN_HOST, LISTEN_PORT = os.environ.get("WEB_LISTEN", "127.0.0.1:8080").rsplit(":", 1)
@@ -53,7 +55,9 @@ SESSION_DAYS = int(os.environ.get("WEB_SESSION_DAYS", "30"))
 # Only for local testing over plain HTTP; never set in production.
 INSECURE_COOKIE = os.environ.get("WEB_INSECURE_COOKIE") == "1"
 BYTES_PER_SECOND = 192000 / 8  # All archive audio is 192 kbps CBR; good enough to place files.
-FILE_NAME = re.compile(r"^RBMFM_(\d{8}T\d{6}[+-]\d{4})\.mp3$")
+# The studio copy is the desk's output, unprocessed: about 17 dB quieter than the FM
+# off-air audio. Off-air pieces spliced into a studio selection are turned down this much.
+OFFAIR_GAIN_DB = float(os.environ.get("WEB_OFFAIR_GAIN_DB", "-16"))
 MIN_RECORDING_SECONDS = 5  # Shorter files are restart fragments or junk; leave them off the timeline.
 MAX_FAILS, LOCKOUT_SECONDS = 5, 900
 GUIDE_DIR = Path(os.environ.get("WEB_GUIDE_DIR", "/var/lib/rbm-guide"))
@@ -127,50 +131,62 @@ failures_lock = threading.Lock()
 
 
 # --- Recording index ---------------------------------------------------------------
+# Two sources: "fm", what the off-air receiver heard (the broadcast record), and
+# "studio", Studio-A's output recorded straight off Dante (what presenters want). A studio
+# selection fills any holes from FM; an FM selection is only ever FM.
+
+class Source:
+    def __init__(self, key, folder, prefix, required):
+        self.key, self.folder, self.prefix, self.required = key, folder, prefix, required
+        self.pattern = re.compile(rf"^{prefix}_(\d{{8}}T\d{{6}}[+-]\d{{4}})\.mp3$")
+        self.index, self.index_time, self.lock = [], 0.0, threading.Lock()
+
+
+FM = Source("fm", RECORDINGS, "RBMFM", True)
+STUDIO = Source("studio", STUDIO_DIR, "RBMSTUDIO", False)
+SOURCES = {"fm": FM, "studio": STUDIO}
+
 
 class Recording:
-    __slots__ = ("path", "start", "end", "rate")
+    __slots__ = ("path", "start", "end", "rate", "source")
 
-    def __init__(self, path, start, seconds):
-        self.path, self.start = path, start
+    def __init__(self, path, start, seconds, source):
+        self.path, self.start, self.source = path, start, source
         self.end = start + dt.timedelta(seconds=seconds)
         self.rate = None
 
 
-index = []
-index_time = 0.0
-index_lock = threading.Lock()
-
-
-def recordings():
-    """All archive recordings sorted by real start time, rescanned at most once a minute."""
-    global index, index_time
-    with index_lock:
-        if time.monotonic() - index_time > 60:
+def recordings(src=FM):
+    """A source's recordings sorted by real start time, rescanned at most once a minute."""
+    with src.lock:
+        if time.monotonic() - src.index_time > 60:
             found = []
             try:
-                with os.scandir(RECORDINGS) as entries:
+                with os.scandir(src.folder) as entries:
                     for entry in entries:
-                        match = FILE_NAME.fullmatch(entry.name)
+                        match = src.pattern.fullmatch(entry.name)
                         if match and entry.is_file(follow_symlinks=False):
                             seconds = entry.stat().st_size / BYTES_PER_SECOND
                             if seconds < MIN_RECORDING_SECONDS:
                                 continue
                             start = dt.datetime.strptime(match.group(1), "%Y%m%dT%H%M%S%z")
-                            found.append(Recording(Path(entry.path), start, seconds))
+                            found.append(Recording(Path(entry.path), start, seconds, src))
+            except FileNotFoundError:
+                if src.required:
+                    raise
             except OSError as exc:
-                alert("archive", "RBM download page can't read the archive",
-                      f"{RECORDINGS}: {exc}. The page will show no recordings until this is fixed.", "urgent")
+                alert("archive-" + src.key, "RBM download page can't read the archive",
+                      f"{src.folder}: {exc}. The page will show no recordings until this is fixed.", "urgent")
                 raise
-            if not found:
+            if not found and src.required:
                 alert("empty", "RBM download page sees no recordings",
-                      f"No RBMFM_ files found in {RECORDINGS}. Is the RAID mounted?", "urgent")
+                      f"No {src.prefix}_ files found in {src.folder}. Is the RAID mounted?", "urgent")
             found.sort(key=lambda r: r.start)
-            old = {r.path: r.rate for r in index}
+            old = {r.path: r.rate for r in src.index}
             for r in found:
                 r.rate = old.get(r.path)
-            index, index_time = found, time.monotonic()
-        return index
+            src.index, src.index_time = found, time.monotonic()
+        return src.index
 
 
 def sample_rate(rec):
@@ -182,9 +198,30 @@ def sample_rate(rec):
     return rec.rate
 
 
-def pieces(start, end):
-    """[(recording, in_seconds, out_seconds)] covering start..end, without overlaps."""
-    recs = recordings()
+def pieces(start, end, src=FM):
+    """[(recording, in_seconds, out_seconds)] covering start..end, without overlaps.
+    For the studio source, holes in the studio copy are filled from FM."""
+    own = source_pieces(start, end, src)
+    if src is FM:
+        return own
+    filled, cursor = [], start
+    for piece in own + [None]:
+        hole_end = end if piece is None else piece[0].start + dt.timedelta(seconds=piece[1])
+        if (hole_end - cursor).total_seconds() > 1:
+            filled += source_pieces(cursor, hole_end, FM)
+        if piece is not None:
+            filled.append(piece)
+            cursor = piece[0].start + dt.timedelta(seconds=piece[2])
+    return filled
+
+
+def offair_seconds(parts):
+    """Seconds of a studio selection that come from the FM off-air copy."""
+    return sum(b - a for rec, a, b in parts if rec.source is FM)
+
+
+def source_pieces(start, end, src):
+    recs = recordings(src)
     chosen = []
     cursor = start
     for i, rec in enumerate(recs):
@@ -222,20 +259,22 @@ def missing_seconds(start, end, parts):
     return missing
 
 
-def coverage(day):
+def coverage(day, src=FM):
     """Recorded spans from local midnight to 06:00 the next day (so overnight shows are
-    visible), as minutes since local midnight."""
+    visible), as [from, to, offair] in minutes since local midnight. offair is 1 where a
+    studio selection would use the FM off-air copy."""
     day_start = dt.datetime.combine(day, dt.time(), TZ)
     day_end = dt.datetime.combine(day + dt.timedelta(days=1), dt.time(6), TZ)
     spans = []
-    for rec, a, b in pieces(day_start, day_end):
+    for rec, a, b in pieces(day_start, day_end, src):
         lo = (rec.start + dt.timedelta(seconds=a) - day_start).total_seconds() / 60
         hi = (rec.start + dt.timedelta(seconds=b) - day_start).total_seconds() / 60
-        if spans and lo - spans[-1][1] < 0.5:
+        offair = int(src is not FM and rec.source is FM)
+        if spans and lo - spans[-1][1] < 0.5 and spans[-1][2] == offair:
             spans[-1][1] = hi
         else:
-            spans.append([lo, hi])
-    return [[round(lo, 2), round(hi, 2)] for lo, hi in spans]
+            spans.append([lo, hi, offair])
+    return [[round(lo, 2), round(hi, 2), off] for lo, hi, off in spans]
 
 
 # --- Programme guide ---------------------------------------------------------------
@@ -357,12 +396,12 @@ def frame_start(f, offset):
     return offset
 
 
-def next_recording(after):
+def next_recording(after, src=FM):
     """The recording that starts soonest after `after` (names only, so it's quick)."""
     best = None
-    with os.scandir(RECORDINGS) as entries:
+    with os.scandir(src.folder) as entries:
         for entry in entries:
-            match = FILE_NAME.fullmatch(entry.name)
+            match = src.pattern.fullmatch(entry.name)
             if match:
                 start = dt.datetime.strptime(match.group(1), "%Y%m%dT%H%M%S%z")
                 if start > after and (best is None or start < best[0]):
@@ -370,20 +409,30 @@ def next_recording(after):
     return best
 
 
-def live_start_point(at):
-    """(path, start, byte offset) to begin a live stream at `at`, or None."""
-    recs = recordings()
+def live_start_point(at, src=FM):
+    """(path, start, seconds in, source) to begin a live stream at `at`, or None.
+    A studio stream with no studio copy at that moment uses FM instead."""
+    point = source_live_point(at, src)
+    if src is not FM and (point is None or point[1] + dt.timedelta(seconds=point[2]) > at + dt.timedelta(seconds=GAP_TOLERANCE)):
+        fm = source_live_point(at, FM)
+        if fm is not None and (point is None or fm[1] + dt.timedelta(seconds=fm[2]) < point[1] + dt.timedelta(seconds=point[2])):
+            return fm
+    return point
+
+
+def source_live_point(at, src):
+    recs = recordings(src)
     for rec in reversed(recs):
         if rec.start <= at:
             if at < rec.end + dt.timedelta(seconds=GAP_TOLERANCE) or rec is recs[-1]:
-                return rec.path, rec.start, (at - rec.start).total_seconds()
+                return rec.path, rec.start, (at - rec.start).total_seconds(), src
             break
     # In a gap, or newer than the index knows: start at the next recording.
-    nxt = next_recording(at - dt.timedelta(hours=2)) if not recs or at > recs[-1].start else None
+    nxt = next_recording(at - dt.timedelta(hours=2), src) if not recs or at > recs[-1].start else None
     if nxt is None:
         later = [r for r in recs if r.start > at]
-        return (later[0].path, later[0].start, 0.0) if later else None
-    return nxt[1], nxt[0], max(0.0, (at - nxt[0]).total_seconds())
+        return (later[0].path, later[0].start, 0.0, src) if later else None
+    return nxt[1], nxt[0], max(0.0, (at - nxt[0]).total_seconds()), src
 
 
 def parse_local(text):
@@ -396,8 +445,9 @@ def ffmpeg_join(parts):
     """Return (Popen, tempdir) streaming MP3 to stdout."""
     tmp = tempfile.TemporaryDirectory(prefix="rbm-web-")
     rates = {sample_rate(rec) for rec, _, _ in parts}
+    mixed = len({rec.source for rec, _, _ in parts}) > 1
     base = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error"]
-    if len(rates) == 1:
+    if len(rates) == 1 and not mixed:
         # Same format throughout: copy the audio as it is, no re-encoding.
         listing = Path(tmp.name) / "list.txt"
         with listing.open("w") as f:
@@ -406,11 +456,13 @@ def ffmpeg_join(parts):
         cmd = base + ["-f", "concat", "-safe", "0", "-i", str(listing),
                       "-map", "0:a", "-c", "copy", "-f", "mp3", "pipe:1"]
     else:
-        # Mixed 44.1/48 kHz sources: resample and re-encode only this download.
+        # Mixed 44.1/48 kHz files, or studio audio with off-air pieces (turned down to
+        # match): resample and re-encode only this download.
         cmd = list(base)
         for rec, a, b in parts:
             cmd += ["-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", str(rec.path)]
-        graph = "".join(f"[{i}:a]aresample=48000[a{i}];" for i in range(len(parts)))
+        gain = lambda rec: f",volume={OFFAIR_GAIN_DB}dB" if mixed and rec.source is FM else ""
+        graph = "".join(f"[{i}:a]aresample=48000{gain(rec)}[a{i}];" for i, (rec, _, _) in enumerate(parts))
         graph += "".join(f"[a{i}]" for i in range(len(parts))) + f"concat=n={len(parts)}:v=0:a=1[out]"
         cmd += ["-filter_complex", graph, "-map", "[out]", "-c:a", "libmp3lame", "-b:a", "192k",
                 "-f", "mp3", "pipe:1"]
@@ -496,21 +548,25 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(HTTPStatus.UNAUTHORIZED, {"error": "login"})
         query = dict(urllib.parse.parse_qsl(url.query))
         try:
+            # Presenters get the studio copy unless they ask for the off-air recording.
+            src = SOURCES[query.get("source", "studio")]
             if url.path == "/api/coverage":
                 day = dt.date.fromisoformat(query["date"])
-                return self.send_json(HTTPStatus.OK, {"date": day.isoformat(), "spans": coverage(day),
-                                                      "max_hours": MAX_HOURS})
+                return self.send_json(HTTPStatus.OK, {"date": day.isoformat(), "spans": coverage(day, src),
+                                                      "source": src.key, "max_hours": MAX_HOURS})
             if url.path == "/api/audio":
                 return self.audio(parse_local(query["start"]), parse_local(query["end"]),
-                                  query.get("download") == "1", query.get("check") == "1")
+                                  query.get("download") == "1", query.get("check") == "1", src)
             if url.path == "/api/info":
                 # For the marquee: what's on air now, and how far back the archive goes.
                 now = dt.datetime.now(TZ)
-                recs = recordings()
+                recs = recordings(FM)
+                studio = recordings(STUDIO)
                 on_air = next((sh for sh in shows_between(now, now + dt.timedelta(minutes=1)) if not sh["probable"]), None)
                 return self.send_json(HTTPStatus.OK, {
                     "on_air": on_air and {"name": on_air["name"], "presenter": on_air["presenter"]},
                     "oldest": recs[0].start.date().isoformat() if recs else None,
+                    "studio_oldest": studio[0].start.date().isoformat() if studio else None,
                     "hours": round(sum((r.end - r.start).total_seconds() for r in recs) / 3600)})
             if url.path == "/api/shows":
                 day = dt.date.fromisoformat(query["date"])
@@ -523,15 +579,16 @@ class Handler(BaseHTTPRequestHandler):
                     "to": round((sh["_end"] - day_start).total_seconds() / 60, 2),
                     "probable": sh["probable"], "schedule": sh["schedule"]} for sh in shows]})
             if url.path == "/api/segments":
-                return self.segments(parse_local(query["start"]), parse_local(query["end"]))
+                return self.segments(parse_local(query["start"]), parse_local(query["end"]), src)
             if url.path == "/api/live":
                 at = dt.datetime.fromtimestamp(float(query["at"]), TZ)
                 if query.get("check") == "1":
                     # Where a stream asked to start at `at` really starts (gaps skip ahead).
-                    point = live_start_point(min(at, dt.datetime.now(TZ)))
+                    point = live_start_point(min(at, dt.datetime.now(TZ)), src)
                     return self.send_json(HTTPStatus.OK if point else HTTPStatus.NOT_FOUND,
-                                          {"start": point[1].timestamp() + point[2]} if point else {"error": "nothing recorded"})
-                return self.live(at)
+                                          {"start": point[1].timestamp() + point[2], "source": point[3].key}
+                                          if point else {"error": "nothing recorded"})
+                return self.live(at, src)
             if url.path == "/api/file":
                 return self.recording_file(query["id"])
         except (KeyError, ValueError):
@@ -586,29 +643,34 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def segments(self, start, end):
+    def segments(self, start, end, src):
         """The pieces of the range, for the in-browser player to stream file by file."""
         if end <= start:
             end += dt.timedelta(days=1)
         if (end - start).total_seconds() > MAX_HOURS * 3600:
             return self.send_json(HTTPStatus.BAD_REQUEST, {"error": f"maximum {MAX_HOURS:g} hours"})
-        parts = pieces(start, end)
+        parts = pieces(start, end, src)
         if not parts:
             return self.send_json(HTTPStatus.NOT_FOUND, {"error": "nothing recorded in that range"})
+        mixed = len({rec.source for rec, _, _ in parts}) > 1
         self.send_json(HTTPStatus.OK, {
             "duration": (end - start).total_seconds(),
             "missing": missing_seconds(start, end, parts),
+            "offair": offair_seconds(parts) if src is not FM else 0,
+            # Off-air pieces among studio audio play quieter to match (dB).
             "segments": [{"id": rec.path.name, "in": round(a, 3), "out": round(b, 3),
-                          "at": round((rec.start - start).total_seconds() + a, 3)}
+                          "at": round((rec.start - start).total_seconds() + a, 3),
+                          "offair": rec.source is FM and src is not FM,
+                          "gain": OFFAIR_GAIN_DB if mixed and rec.source is FM else 0}
                          for rec, a, b in parts]})
 
-    def live(self, at):
-        point = live_start_point(min(at, dt.datetime.now(TZ)))
+    def live(self, at, src):
+        point = live_start_point(min(at, dt.datetime.now(TZ)), src)
         if point is None:
             return self.send_json(HTTPStatus.NOT_FOUND, {"error": "nothing recorded from then on"})
         if not live_slots.acquire(blocking=False):
             return self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "too many live listeners, try again shortly"})
-        path, start, seconds = point
+        path, start, seconds, src = point
         try:
             self.send_response(HTTPStatus.OK)
             self.common_headers()
@@ -616,6 +678,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             # Where the stream really starts, so the page can show the right clock time.
             self.send_header("X-RBM-Live-Start", f"{start.timestamp() + seconds:.3f}")
+            self.send_header("X-RBM-Source", src.key)
             self.end_headers()
             log.info("LIVE %s from %s (%s +%ds)", self.client_ip(), at, path.name, seconds)
             deadline = time.monotonic() + LIVE_MAX_HOURS * 3600
@@ -633,7 +696,7 @@ class Handler(BaseHTTPRequestHandler):
                     waited = 0.0
                     continue
                 # End of this file: move on if the next one has started, else wait for more.
-                nxt = next_recording(start)
+                nxt = next_recording(start, src)
                 if nxt and (nxt[1].stat().st_size > 0):
                     f.close()
                     start, path = nxt
@@ -653,7 +716,7 @@ class Handler(BaseHTTPRequestHandler):
     def recording_file(self, name):
         """One recording, with HTTP Range support so the browser can seek within it.
         The name is only used to look the file up in the index, never as a path."""
-        rec = next((r for r in recordings() if r.path.name == name), None)
+        rec = next((r for src in SOURCES.values() for r in recordings(src) if r.path.name == name), None)
         if rec is None:
             return self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
         size = rec.path.stat().st_size
@@ -690,19 +753,21 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass  # The browser seeks by dropping one request and starting another.
 
-    def audio(self, start, end, download, check_only):
+    def audio(self, start, end, download, check_only, src):
         if end <= start:
             end += dt.timedelta(days=1)  # e.g. 23:00 -> 01:00 runs past midnight.
         requested = (end - start).total_seconds()
         if requested > MAX_HOURS * 3600:
             return self.send_json(HTTPStatus.BAD_REQUEST, {"error": f"maximum {MAX_HOURS:g} hours"})
-        parts = pieces(start, end)
+        parts = pieces(start, end, src)
         if not parts:
             return self.send_json(HTTPStatus.NOT_FOUND, {"error": "nothing recorded in that range"})
         show = show_for_range(start, end)
+        offair = offair_seconds(parts) if src is not FM else 0
         if check_only:
             return self.send_json(HTTPStatus.OK, {
                 "requested": requested, "covered": requested - missing_seconds(start, end, parts),
+                "source": src.key, "offair": offair,
                 "show": show and {"name": show["name"], "presenter": show["presenter"],
                                   "probable": show["probable"], "schedule": show["schedule"]}})
         if not jobs.acquire(blocking=False):
@@ -713,11 +778,17 @@ class Handler(BaseHTTPRequestHandler):
             covered = requested - missing_seconds(start, end, parts)
             # Say so in the file name too, so a saved file can't pass as complete.
             incomplete = "_INCOMPLETE" if covered < requested else ""
-            if show:
-                # e.g. RBMFM_Strange-Brew-Breakfast_20261105_0700-0900.mp3
-                name = f"RBMFM_{slug(show['name'])}_{start:%Y%m%d_%H%M}-{end:%H%M}{incomplete}.mp3"
+            # A studio download that had to use some off-air audio says so.
+            if offair >= requested - 1 and src is not FM:
+                prefix = "RBMFM"  # No studio copy at all: it's simply the off-air recording.
             else:
-                name = f"RBMFM_{start:%Y%m%dT%H%M}-{end:%Y%m%dT%H%M}{incomplete}.mp3"
+                prefix = src.prefix
+                incomplete = ("_PARTLY-OFFAIR" if offair > 1 else "") + incomplete
+            if show:
+                # e.g. RBMSTUDIO_Strange-Brew-Breakfast_20261105_0700-0900.mp3
+                name = f"{prefix}_{slug(show['name'])}_{start:%Y%m%d_%H%M}-{end:%H%M}{incomplete}.mp3"
+            else:
+                name = f"{prefix}_{start:%Y%m%dT%H%M}-{end:%Y%m%dT%H%M}{incomplete}.mp3"
             self.send_response(HTTPStatus.OK)
             self.common_headers()
             self.send_header("Content-Type", "audio/mpeg")
@@ -726,7 +797,8 @@ class Handler(BaseHTTPRequestHandler):
             if download:
                 self.send_header("Content-Disposition", f'attachment; filename="{name}"')
             self.end_headers()
-            log.info("AUDIO %s %s -> %s files=%d covered=%ds", self.client_ip(), start, end, len(parts), covered)
+            log.info("AUDIO %s %s %s -> %s files=%d covered=%ds offair=%ds", self.client_ip(), src.key, start, end,
+                     len(parts), covered, offair)
             sent = 0
             while chunk := proc.stdout.read(65536):
                 self.wfile.write(chunk)
@@ -760,7 +832,7 @@ def main():
     SECRET = bytes.fromhex(os.environ["WEB_SECRET"])
     server = ThreadingHTTPServer((LISTEN_HOST, int(LISTEN_PORT)), Handler)
     server.daemon_threads = True
-    log.info("RBM web listening on %s:%s, recordings=%s", LISTEN_HOST, LISTEN_PORT, RECORDINGS)
+    log.info("RBM web listening on %s:%s, recordings=%s studio=%s", LISTEN_HOST, LISTEN_PORT, RECORDINGS, STUDIO_DIR)
     server.serve_forever()
 
 

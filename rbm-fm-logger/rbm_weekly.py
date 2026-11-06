@@ -29,15 +29,17 @@ WEB_HOSTS = os.environ.get("WEB_PUBLIC_HOSTS", "rbm.kaos.zone").split()
 NTFY_URL = os.environ.get("NTFY_URL", "")
 NTFY_TOKEN = os.environ.get("NTFY_TOKEN", "")
 FILE_NAME = re.compile(r"^RBMFM_(\d{8}T\d{6}[+-]\d{4})\.mp3$")
+STUDIO = MOUNT / "studio"
+STUDIO_NAME = re.compile(r"^RBMSTUDIO_(\d{8}T\d{6}[+-]\d{4})\.mp3$")
 BYTES_PER_SECOND = 192000 / 8
 REQUIRED_DAYS = int(os.environ.get("REQUIRED_RETENTION_DAYS", "42"))
 GAP_REPORT_SECONDS = 120
 
 
-def recordings():
+def recordings(folder=RECORDINGS, pattern=FILE_NAME):
     found = []
-    for entry in os.scandir(RECORDINGS):
-        match = FILE_NAME.fullmatch(entry.name)
+    for entry in os.scandir(folder):
+        match = pattern.fullmatch(entry.name)
         if match and entry.is_file(follow_symlinks=False):
             start = dt.datetime.strptime(match.group(1), "%Y%m%dT%H%M%S%z")
             found.append((start, start + dt.timedelta(seconds=entry.stat().st_size / BYTES_PER_SECOND)))
@@ -154,8 +156,27 @@ def main():
         lines.append("Disk health: no report")
         problems.append("disk health unknown")
 
+    # Studio (Dante) copy: only reported once it exists.
+    studio_on = service_active("rbm-studio")
+    if studio_on or STUDIO.is_dir():
+        lines.append(f"Studio recorder: {'running' if studio_on else 'NOT RUNNING'}")
+        if not studio_on:
+            problems.append("studio recorder not running")
+        try:
+            srecs = recordings(STUDIO, STUDIO_NAME)
+            scovered, _ = coverage(srecs, max(since, srecs[0][0]) if srecs else since, now)
+            span = (now - max(since, srecs[0][0])).total_seconds() if srecs else 0
+            spct = scovered / span * 100 if span else 0
+            lines.append(f"Studio copy: {scovered / 3600:.1f} h this week ({spct:.1f}% since it started)")
+            if studio_on and spct < 95:
+                problems.append(f"studio copy only {spct:.0f}%")
+        except OSError as exc:
+            lines.append(f"Studio copy: can't read {STUDIO} ({exc})")
+
     usage = shutil.disk_usage(MOUNT)
-    days_left = usage.free / (2.07 * 1024 ** 3)  # About 2 GB per day at 192 kbps.
+    # About 2 GB per day per source at 192 kbps; 30 GiB is kept free.
+    per_day = 2.07 * (2 if studio_on else 1)
+    days_left = max(0, usage.free / 1024 ** 3 - 30) / per_day
     lines.append(f"Free space: {usage.free / 1024 ** 3:.0f} GiB (about {days_left:.0f} days before old "
                  "recordings start being deleted)")
 

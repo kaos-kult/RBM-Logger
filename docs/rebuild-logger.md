@@ -103,6 +103,8 @@ ssh -t logger 'cd ~/rbm-fm-logger && sudo ./install.sh && sudo ./update-logger.s
 ssh -t logger 'cd ~/rbm-fm-logger/web && sudo ./install-web.sh && sudo ./caddy-dns-setup.sh'
 ```
 
+For the studio (Dante) recorder, build Inferno and Statime as the logger user and run `install-studio.sh` (the commands are at the top of that script, and in [studio-recorder.md](studio-recorder.md)). The Dante routing is part of the restored `/var/lib/rbm-logger`.
+
 `install.sh` installs ffmpeg and the recorder. `update-logger.sh` adds security updates, disk monitoring, the weekly summary and the settings backup. `install-web.sh` and `caddy-dns-setup.sh` set up the download page. The Cloudflare token is already restored, so it isn't asked for.
 
 Then start the recorder, and restart SSH so it uses the restored host keys and key-only login:

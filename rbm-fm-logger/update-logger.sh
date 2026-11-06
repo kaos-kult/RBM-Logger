@@ -26,7 +26,7 @@ EOF
 # Only restart the recorder (a gap of a few seconds) if its own code changed.
 recorder_changed=1
 cmp -s rbm_logger.py /usr/local/lib/rbm-logger/rbm_logger.py && recorder_changed=0
-install -m 0755 rbm_logger.py rbm_backup.py rbm_weekly.py smart_report.py smart_alert.sh rbm_config_backup.sh /usr/local/lib/rbm-logger/
+install -m 0755 rbm_logger.py rbm_studio.py rbm_backup.py rbm_weekly.py smart_report.py smart_alert.sh rbm_config_backup.sh /usr/local/lib/rbm-logger/
 
 # Disk health: smartd watches every disk, runs a short self-test daily and a long one
 # weekly, and calls smart_alert.sh (ntfy) on new bad sectors, failures or overheating.

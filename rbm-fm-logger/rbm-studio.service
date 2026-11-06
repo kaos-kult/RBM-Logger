@@ -1,0 +1,40 @@
+[Unit]
+Description=RBM studio recorder (Studio-A Program-L/R from Dante, via Inferno)
+After=local-fs.target network-online.target rbm-ptp.service
+Wants=rbm-ptp.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=rbmlogger
+Group=rbmlogger
+EnvironmentFile=/etc/rbm-logger.conf
+# Inferno keeps its Dante subscriptions under $HOME/.local/state/inferno_aoip.
+Environment=HOME=/var/lib/rbm-logger
+# Inferno reaches the clock follower over Unix sockets in /run/rbm-dante (both ends).
+Environment=INFERNO_CLOCK_PATH=/run/rbm-dante/usrvclock TMPDIR=/run/rbm-dante
+ExecStart=/usr/local/lib/rbm-logger/rbm_studio.py
+Restart=always
+RestartSec=5
+TimeoutStopSec=40
+KillMode=mixed
+UMask=0027
+WorkingDirectory=/var/lib/rbm-logger
+# Never slow down the FM recorder.
+Nice=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectClock=true
+ReadWritePaths=/mnt/storage/studio /var/lib/rbm-logger -/run/rbm-dante
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

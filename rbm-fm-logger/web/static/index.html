@@ -63,7 +63,11 @@
     <div class="timeline-wrap">
       <div class="timeline-hours" id="hours" aria-hidden="true"></div>
       <canvas id="timeline" height="104" aria-label="Recorded coverage for the day. Drag to select a range."></canvas>
-      <p class="legend"><span class="sw sw-show"></span> show (click to select) <span class="sw sw-rec"></span> recorded <span class="sw sw-gap"></span> no recording <span class="sw sw-sel"></span> your selection · or drag across the strip</p>
+      <div class="source-switch" role="radiogroup" aria-label="Which recording">
+        <button type="button" role="radio" data-source="studio" title="Studio-A's output, straight off the desk: the clean copy for podcasts">STUDIO</button>
+        <button type="button" role="radio" data-source="fm" title="What the FM receiver heard: the broadcast as it went to air, faults and all">OFF-AIR</button>
+      </div>
+      <p class="legend"><span class="sw sw-show"></span> show (click to select) <span class="sw sw-rec"></span> recorded <span id="legend-offair"><span class="sw sw-offair"></span> off-air only</span> <span class="sw sw-gap"></span> no recording <span class="sw sw-sel"></span> your selection · or drag across the strip</p>
     </div>
 
     <div class="row knobs">

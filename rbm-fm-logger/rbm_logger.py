@@ -53,6 +53,15 @@ GIB = 1024 ** 3
 # RBMFM_20261105T210000+1100.mp3. The offset keeps the repeated April DST hour unambiguous.
 STATION_TZ = os.environ.get("STATION_TZ", "Australia/Sydney")
 FILE_NAME = re.compile(r"^RBMFM_(\d{8}T\d{6}[+-]\d{4})\.mp3$")
+# Studio (Dante) copy, recorded by rbm_studio.py. Its retention is handled here too, so
+# one cleaner decides what goes when the disk fills up.
+STUDIO = MOUNT / os.environ.get("STUDIO_SUBDIR", "studio")
+STUDIO_NAME = re.compile(r"^RBMSTUDIO_(\d{8}T\d{6}[+-]\d{4})\.mp3$")
+# Age limits in days; 0 = keep until low disk space forces the oldest out.
+FM_KEEP_DAYS = int(os.environ.get("FM_KEEP_DAYS", "0"))
+STUDIO_KEEP_DAYS = int(os.environ.get("STUDIO_KEEP_DAYS", "0"))
+# Studio copies newer than this are deleted for space only after older FM and studio audio.
+STUDIO_MIN_DAYS = int(os.environ.get("STUDIO_MIN_DAYS", "0"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("rbm-logger")
@@ -171,7 +180,8 @@ def storage_mounted():
 
 def recording_start(name):
     """Real start time of a recording, from its name (name sort is wrong for one DST hour)."""
-    return dt.datetime.strptime(FILE_NAME.fullmatch(name).group(1), "%Y%m%dT%H%M%S%z")
+    match = FILE_NAME.fullmatch(name) or STUDIO_NAME.fullmatch(name)
+    return dt.datetime.strptime(match.group(1), "%Y%m%dT%H%M%S%z")
 
 
 def recording_files():
@@ -205,39 +215,77 @@ def check_retention_floor(removed_young):
         retention_warned = True
 
 
+def studio_files():
+    """The studio (Dante) recordings written by rbm_studio.py, if there are any."""
+    try:
+        with os.scandir(STUDIO) as entries:
+            for entry in entries:
+                if STUDIO_NAME.fullmatch(entry.name) and entry.is_file(follow_symlinks=False):
+                    yield entry.name, entry.stat(follow_symlinks=False)
+    except FileNotFoundError:
+        return
+
+
+def purge_expired(now):
+    """Delete recordings past their source's age limit (FM_KEEP_DAYS / STUDIO_KEEP_DAYS;
+    0 means no limit, so only low disk space removes them)."""
+    removed = reclaimed = 0
+    for folder, files, keep_days in ((RECORDINGS, recording_files, FM_KEEP_DAYS),
+                                     (STUDIO, studio_files, STUDIO_KEEP_DAYS)):
+        if keep_days <= 0:
+            continue
+        cutoff = now - keep_days * 86400
+        for name, stat in list(files()):
+            if stat.st_mtime < cutoff:
+                try:
+                    (folder / name).unlink()
+                except OSError as exc:
+                    log.error("Unable to delete %s: %s", folder / name, exc)
+                    continue
+                removed += 1
+                reclaimed += stat.st_size
+    if removed:
+        log.info("RETENTION removed %d files past their age limit, reclaimed %.2f GiB",
+                 removed, reclaimed / GIB)
+
+
 def purge_old():
+    now = time.time()
+    purge_expired(now)
     free = shutil.disk_usage(MOUNT).free
     threshold = MIN_FREE_GIB * GIB
     if free >= threshold:
         return True
 
-    now = time.time()
+    # Low on space: delete the oldest recordings of either source. Files still inside
+    # their source's minimum (REQUIRED_RETENTION_DAYS for FM, STUDIO_MIN_DAYS for the
+    # studio copy) go only once nothing else is left.
     eligible = []
-    mtimes = {}
-    for name, stat in recording_files():
-        # Never delete the active MP3 or anything created in the last two hours.
-        if now - stat.st_mtime >= MIN_RETENTION_AGE_SECONDS:
-            eligible.append((name, stat.st_size))
-            mtimes[name] = stat.st_mtime
+    for folder, files, min_days in ((RECORDINGS, recording_files, REQUIRED_RETENTION_DAYS),
+                                    (STUDIO, studio_files, STUDIO_MIN_DAYS)):
+        for name, stat in files():
+            # Never delete a file being written or anything created in the last two hours.
+            if now - stat.st_mtime >= MIN_RETENTION_AGE_SECONDS:
+                protected = stat.st_mtime >= now - min_days * 86400
+                eligible.append((protected, recording_start(name), folder, name, stat))
 
-    # Sort by real start time, so the repeated DST hour is handled correctly.
-    eligible.sort(key=lambda item: recording_start(item[0]))
+    # Real start time, not name order, so the repeated DST hour is handled correctly.
+    eligible.sort(key=lambda item: (item[0], item[1]))
     removed = 0
     reclaimed = 0
-    required_cutoff = now - REQUIRED_RETENTION_DAYS * 86400
     removed_young = None
-    for name, byte_count in eligible:
+    for protected, _, folder, name, stat in eligible:
         if free >= threshold:
             break
-        path = RECORDINGS / name
+        path = folder / name
         try:
             path.unlink()
         except OSError as exc:
             log.error("Unable to delete %s: %s", path, exc)
             continue
         removed += 1
-        reclaimed += byte_count
-        if mtimes[name] >= required_cutoff:
+        reclaimed += stat.st_size
+        if protected and folder == RECORDINGS:
             removed_young = name
         free = shutil.disk_usage(MOUNT).free
     if removed:

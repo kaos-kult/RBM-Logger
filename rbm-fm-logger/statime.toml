@@ -1,0 +1,21 @@
+# Statime (Inferno fork) for the RBM studio recorder: follow the Dante PTPv1 clock.
+# Installed as /etc/rbm-dante/statime.toml by install-studio.sh.
+loglevel = "warn"
+
+sdo-id = 0
+domain = 0
+# Lowest priority: never try to lead the Dante network (PTPv1 leading isn't implemented anyway).
+priority1 = 251
+# A private clock that follows Dante time. The logger's real clock (NTP, FM file names)
+# is never adjusted.
+virtual-system-clock = true
+virtual-system-clock-base = "monotonic_raw"
+usrvclock-export = true
+# Where the studio recorder (Inferno) reads the clock from.
+usrvclock-path = "/run/rbm-dante/usrvclock"
+
+[[port]]
+interface = "enp7s0"
+network-mode = "ipv4"
+hardware-clock = "auto"
+protocol-version = "PTPv1"

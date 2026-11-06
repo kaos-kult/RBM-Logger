@@ -4,7 +4,11 @@
 
 const $ = (id) => document.getElementById(id);
 const STEP = 5;
-const state = { date: "", start: 0, end: 60, spans: [], shows: [], maxHours: 6 };
+const state = { date: "", start: 0, end: 60, spans: [], shows: [], maxHours: 6, source: "studio" };
+// STUDIO (the desk's output off Dante, the default) or OFF-AIR (what the FM receiver
+// heard). Remembered per device. A studio selection fills holes from off-air.
+try { if (localStorage.getItem("rbm_source") === "fm") state.source = "fm"; } catch (_) {}
+const srcQ = () => `source=${state.source}`;
 const pad = (n) => String(n).padStart(2, "0");
 const hhmm = (m) => `${pad(Math.floor(((m % 1440) + 1440) % 1440 / 60))}:${pad(((m % 60) + 60) % 60)}`;
 const clampMin = (m) => ((Math.round(m) % 1440) + 1440) % 1440;
@@ -74,7 +78,7 @@ function showUnreachable() {
   $("offline").hidden = false;
 }
 function connect() {
-  api(`/api/coverage?date=${state.date}`).then(showConsole).catch((err) => {
+  api(`/api/coverage?date=${state.date}&${srcQ()}`).then(showConsole).catch((err) => {
     if (err.message !== "login") { showUnreachable(); setTimeout(connect, 15000); }
   });
 }
@@ -108,7 +112,7 @@ async function loadCoverage() {
   try {
     const date = state.date;
     const [data, guide] = await Promise.all([
-      api(`/api/coverage?date=${date}`),
+      api(`/api/coverage?date=${date}&${srcQ()}`),
       api(`/api/shows?date=${date}`).catch(() => ({ shows: [] })),  // Names are a bonus.
     ]);
     if (date !== state.date) return;  // The date changed while loading.
@@ -144,7 +148,13 @@ function drawTimeline() {
   const grad = g.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, "#9dffc6"); grad.addColorStop(0.5, "#39ff88"); grad.addColorStop(1, "#0b7a3c");
   g.fillStyle = grad;
-  for (const [a, b] of state.spans) g.fillRect(x(a), SHOW_BAND + 4, Math.max(1.5, x(b) - x(a)), h - SHOW_BAND - 10);
+  for (const [a, b, offair] of state.spans) if (!offair) g.fillRect(x(a), SHOW_BAND + 4, Math.max(1.5, x(b) - x(a)), h - SHOW_BAND - 10);
+  // Studio view: stretches only the off-air recording has, in blue.
+  g.shadowColor = "#5b8cff";
+  const blue = g.createLinearGradient(0, 0, 0, h);
+  blue.addColorStop(0, "#c4d5ff"); blue.addColorStop(0.5, "#5b8cff"); blue.addColorStop(1, "#1d3a8a");
+  g.fillStyle = blue;
+  for (const [a, b, offair] of state.spans) if (offair) g.fillRect(x(a), SHOW_BAND + 4, Math.max(1.5, x(b) - x(a)), h - SHOW_BAND - 10);
   g.shadowBlur = 0;
   // Programme guide: one labelled block per show along the top. Click one to select it.
   g.font = "600 11px 'Avenir Next', 'Segoe UI', system-ui, sans-serif"; g.textBaseline = "middle";
@@ -300,6 +310,27 @@ function updateReadouts() {
   $("download").disabled = over; $("audition").disabled = over;
   updateMarquee();
 }
+// ---------- Source switch ----------
+function showSource() {
+  for (const b of document.querySelectorAll(".source-switch button")) {
+    const on = b.dataset.source === state.source;
+    b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on));
+  }
+  $("legend-offair").hidden = state.source !== "studio";
+}
+for (const b of document.querySelectorAll(".source-switch button")) {
+  b.addEventListener("click", () => {
+    if (b.dataset.source === state.source) return;
+    blip(b.dataset.source === "fm" ? 700 : 1300);
+    state.source = b.dataset.source;
+    try { localStorage.setItem("rbm_source", state.source); } catch (_) {}
+    showSource();
+    if (live.on) liveGo(livePos());  // Carry on from the same moment in the other source.
+    else if (!$("transport").hidden) status("Switched source: press AUDITION to hear this one");
+    loadCoverage();
+  });
+}
+showSource();
 function updateAll() { updateReadouts(); drawTimeline(); startMarquee(); showTrim(); }
 
 // The show this selection is essentially a recording of (same 80% rule as the server).
@@ -315,7 +346,7 @@ function matchedShow() {
 
 function rangeQuery() {
   const endDate = state.end <= state.start ? shiftDate(state.date, 1) : state.date;
-  return `start=${state.date}T${hhmm(state.start)}&end=${endDate}T${hhmm(state.end)}`;
+  return `start=${state.date}T${hhmm(state.start)}&end=${endDate}T${hhmm(state.end)}&${srcQ()}`;
 }
 
 // ---------- Trimming: IN/OUT handles in the LISTEN player, to the second ----------
@@ -334,7 +365,7 @@ const hms = (seconds) => stampAt(seconds).slice(11);
 function cutQuery() {
   if (!trimmed() || (trim.in === 0 && trim.out === trim.len)) return rangeQuery();
   const base = state.start * 60;
-  return `start=${stampAt(base + trim.in)}&end=${stampAt(base + trim.out)}`;
+  return `start=${stampAt(base + trim.in)}&end=${stampAt(base + trim.out)}&${srcQ()}`;
 }
 function setTrim(which, value) {
   const min = which === "in" ? 0 : trim.in + 1, max = which === "in" ? trim.out - 1 : trim.len;
@@ -395,13 +426,15 @@ async function liveGo(epoch) {
   const el = decks[0];
   el.pause();
   try {
-    const point = await api(`/api/live?at=${epoch.toFixed(1)}&check=1`);
+    const point = await api(`/api/live?at=${epoch.toFixed(1)}&check=1&${srcQ()}`);
+    if (state.source === "studio" && point.source === "fm") status("No studio copy from that moment, so this is the off-air recording");
     if (point.start > epoch + 5) status(`Nothing recorded at that moment, so jumped ahead to the next recording`);
     epoch = point.start;
   } catch (err) { if (err.message === "login") return; status(err.message, true); }
   live.base = epoch; live.pausedAt = null;
   delete el.dataset.id;
-  el.src = `/api/live?at=${epoch.toFixed(1)}`;
+  el.volume = 1;
+  el.src = `/api/live?at=${epoch.toFixed(1)}&${srcQ()}`;
   if (player.playing) await el.play().catch(() => {});
 }
 async function startLive() {
@@ -476,6 +509,8 @@ function position() {
 }
 function load(el, seg, offset) {
   return new Promise((resolve) => {
+    // Off-air pieces among studio audio are turned down to match (seg.gain, in dB).
+    el.volume = Math.min(1, 10 ** ((seg.gain || 0) / 20));
     const go = () => { el.currentTime = offset; resolve(); };
     if (el.dataset.id === seg.id && el.readyState >= 1) return go();
     el.dataset.id = seg.id; el.src = fileUrl(seg);
@@ -546,9 +581,10 @@ $("audition").addEventListener("click", async () => {
     if (trim.key !== rangeQuery()) Object.assign(trim, { key: rangeQuery(), in: 0, out: data.duration, len: data.duration });
     showTrim();
     $("transport").hidden = false;
-    status(data.missing > 0 ? `Heads up: ${howLong(data.missing)} of this range was never recorded` : "");
+    status([data.missing > 0 ? `Heads up: ${howLong(data.missing)} of this range was never recorded` : "",
+            offairNote(data.offair, data.duration)].filter(Boolean).join(". "));
     if ("mediaSession" in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({ title: `RBM FM ${state.date} ${hhmm(state.start)}–${hhmm(state.end)}`, artist: "Radio Blue Mountains" });
+      navigator.mediaSession.metadata = new MediaMetadata({ title: `RBM ${state.source === "fm" ? "FM off-air" : "studio"} ${state.date} ${hhmm(state.start)}–${hhmm(state.end)}`, artist: "Radio Blue Mountains" });
     }
     await seek(Math.max(0, data.segments[0].at));
     await setPlaying(true);
@@ -745,6 +781,12 @@ function drawTransport() {
 }
 requestAnimationFrame(drawTransport);
 
+// Studio selections that had to use the off-air recording for part of the time.
+function offairNote(offair, total) {
+  if (!offair || offair < 2) return "";
+  return offair >= total - 2 ? "There's no studio copy of this, so it's the off-air recording"
+    : `${howLong(offair)} of this is the off-air recording (no studio copy then, shown in blue)`;
+}
 function gapNote(check) {
   return `heads up: ${howLong(check.requested - check.covered)} of that range was never recorded, so the file is shorter`;
 }
@@ -805,13 +847,15 @@ $("download").addEventListener("click", async () => {
       const a = document.createElement("a");
       a.href = href; a.rel = "noopener";
       document.body.appendChild(a); a.click(); a.remove();
-      status(gaps ? `Downloading… ${gapNote(check)}` : "Downloading… your file is on its way");
+      status([gaps ? `Downloading… ${gapNote(check)}` : "Downloading… your file is on its way",
+              offairNote(check.offair, check.requested)].filter(Boolean).join(". "));
     };
     btn.classList.add("sending"); btn.disabled = true;  // One cassette at a time.
     const show = check.show;
     const endDate = state.end <= state.start ? shiftDate(state.date, 1) : state.date;
     const day = new Date(`${state.date}T12:00`).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
-    const title = show ? `${show.probable ? "Probably: " : ""}${show.name}` : "RBM FM · Off-Air";
+    const title = show ? `${show.probable ? "Probably: " : ""}${show.name}`
+      : state.source === "fm" || check.offair >= check.requested - 2 ? "RBM FM · Off-Air" : "RBM · Studio";
     const when = cut
       ? `${day} · ${hms(state.start * 60 + trim.in)} → ${hms(state.start * 60 + trim.out)}`
       : `${day} · ${hhmm(state.start)} → ${hhmm(state.end)}${endDate !== state.date ? " (+1)" : ""}`;

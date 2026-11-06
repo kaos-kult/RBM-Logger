@@ -22,6 +22,17 @@ MIN_RETENTION_AGE_SECONDS=7200
 # Minimum archive the station must keep; urgent alert if low disk deletes newer audio.
 # Check the period that applies to your licence.
 REQUIRED_RETENTION_DAYS=42
+# Age limits per source, in days. 0 = no limit: keep until low disk space forces the
+# oldest out (FM inside REQUIRED_RETENTION_DAYS and studio inside STUDIO_MIN_DAYS go last).
+FM_KEEP_DAYS=0
+STUDIO_KEEP_DAYS=0
+STUDIO_MIN_DAYS=0
+# Studio recorder (rbm_studio.py): Dante device name and MP3 bitrate.
+DANTE_NAME=RBM-Logger
+STUDIO_BITRATE=192k
+# Dante dropouts up to this many seconds are filled with silence; longer ones start a new
+# file, and the download page fills the hole from the off-air recording.
+STUDIO_GAP_SECONDS=2
 STALL_SECONDS=90
 ALERT_AFTER_SECONDS=60
 # ntfy Android push: create a difficult-to-guess topic and set its endpoint.

@@ -131,6 +131,19 @@ main { max-width: 980px; margin: 18px auto 30px; padding: 0 16px; }
 .sw-gap { background: repeating-linear-gradient(45deg, var(--red) 0 3px, transparent 3px 6px); }
 .sw-show { background: rgba(255,204,51,0.3); border: 1px solid var(--gold); }
 .sw-sel { background: var(--pink); box-shadow: 0 0 8px var(--pink); }
+.sw-offair { background: #5b8cff; box-shadow: 0 0 8px #5b8cff; }
+#legend-offair { white-space: nowrap; }
+#legend-offair[hidden] { display: none; }
+/* STUDIO | OFF-AIR: a two-way console key under the strip. */
+.source-switch { display: flex; justify-content: center; margin: 12px auto 0; width: max-content; padding: 3px;
+  border-radius: 999px; border: 1px solid var(--edge); background: rgba(0,0,0,0.45); }
+.source-switch button { cursor: pointer; border: 0; border-radius: 999px; padding: 7px 18px; font: inherit;
+  font-size: 0.78rem; font-weight: 800; letter-spacing: 0.16em; color: var(--dim); background: transparent;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s; }
+.source-switch button:hover { color: var(--text); }
+.source-switch button.on[data-source="studio"] { color: #04150b; background: var(--green); box-shadow: 0 0 14px rgba(57,255,136,0.6); }
+.source-switch button.on[data-source="fm"] { color: #050b20; background: #5b8cff; box-shadow: 0 0 14px rgba(91,140,255,0.6); }
+.source-switch button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 
 .knobs { margin: 22px 0; gap: 22px; align-items: stretch; }
 .knob-unit { display: grid; justify-items: center; gap: 10px; }

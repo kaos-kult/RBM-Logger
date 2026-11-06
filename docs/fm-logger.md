@@ -2,6 +2,8 @@
 
 The logger records what Radio Blue Mountains actually puts to air, as received off-air by an FM receiver, 24/7. It is the station's record for complaints, ACMA requests and "what did we play at 8 pm on Tuesday".
 
+Since 6 Nov 2026 it also records a clean copy of Studio-A's output straight off the Dante network, which is what presenters download: see [studio-recorder.md](studio-recorder.md). The two are separate services; this page is about the off-air recording.
+
 ## At a glance
 
 | | |
@@ -144,7 +146,7 @@ Tonight's first logger recordings (5 Nov 20:27–21:35) were replaced by the str
 
 ### The streamer as a backup recorder
 
-The streaming PC (CBAASTRM0908, `ssh streamer`) also records the stream with **BUTT**, into `C:\Users\Stream\Music\` as `rec_YYYYMMDD-HHMMSS.mp3`. It splits every 60 minutes, synced to the hour; set on BUTT's main window and saved. These recordings are independent of the logger, so they can fill gaps if the logger fails.
+The streaming PC (CBAASTRM0908, `ssh streamer`) also records the stream with **BUTT**, into `C:\Users\Stream\Music\` as `rec_YYYYMMDD-HHMMSS.mp3`. It splits every 60 minutes, synced to the hour; set on BUTT's main window and saved. These recordings are independent of the logger, so they can fill gaps if the logger fails. (On 6 Nov 2026 BUTT was found recording one 25-hour file despite the hourly setting; the logger's own studio recorder now covers the clean copy, see [studio-recorder.md](studio-recorder.md).)
 
 Its clock is kept in sync with `au.pool.ntp.org` by the Windows Time service (set to start automatically, 6 Nov 2026; before that it wasn't running and the clock could drift). Check it with `w32tm /query /status`. Splitting long BUTT files into the archive uses `split_butt_recordings.py` (in the logger package). The BUTT recordings are of the **stream**, not of what went to air, so they miss transmitter or RF faults.
 
