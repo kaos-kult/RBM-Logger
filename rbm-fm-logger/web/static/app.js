@@ -218,6 +218,7 @@ tl.addEventListener("pointermove", (e) => {
       + `${show.probable ? ` (per the ${show.schedule} schedule)` : ""}. Click to select.` : "";
     return;
   }
+  if (e.pointerType === "mouse" && !(e.buttons & 1)) { dragFrom = null; return; }  // Released elsewhere.
   const m = tlMinute(e);
   if (m !== dragFrom) dragMoved = true;
   if (m > dragFrom) setRange(dragFrom, m); else if (m < dragFrom) setRange(Math.min(m, 1440 - STEP), dragFrom);
@@ -228,6 +229,7 @@ tl.addEventListener("pointerup", (e) => {
   if (show) { setRange(Math.round(show.from), Math.round(show.to)); blip(1500); blip(2200); }
   dragFrom = null;
 });
+for (const ev of ["pointercancel", "lostpointercapture"]) tl.addEventListener(ev, () => { dragFrom = null; });
 
 // ---------- Knobs ----------
 // One full turn of a knob = 2 hours, so each 5-minute detent is 15 degrees.
@@ -248,6 +250,9 @@ function bindKnob(knob, key) {
   // Turn it like a real knob: drag around the centre, clockwise = later.
   knob.addEventListener("pointerdown", (e) => { knob.setPointerCapture(e.pointerId); lastAngle = angleOf(e); acc = 0; });
   knob.addEventListener("pointermove", (e) => {
+    // Only turn while the button is actually held: a release outside the window never
+    // reaches us, and the dial mustn't carry on turning when the pointer comes back.
+    if (lastAngle !== null && e.pointerType === "mouse" && !(e.buttons & 1)) lastAngle = null;
     if (lastAngle === null) return;
     const angle = angleOf(e);
     acc += ((angle - lastAngle + 540) % 360) - 180;
@@ -256,7 +261,9 @@ function bindKnob(knob, key) {
     while (acc >= detent) { nudge(step); acc -= detent; }
     while (acc <= -detent) { nudge(-step); acc += detent; }
   });
-  knob.addEventListener("pointerup", () => { lastAngle = null; });
+  for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    knob.addEventListener(ev, () => { lastAngle = null; });
+  }
   knob.addEventListener("wheel", (e) => { e.preventDefault(); nudge((e.deltaY < 0 ? 1 : -1) * (e.shiftKey ? 1 : STEP)); }, { passive: false });
   knob.addEventListener("keydown", (e) => {
     const map = { ArrowUp: STEP, ArrowRight: STEP, ArrowDown: -STEP, ArrowLeft: -STEP, PageUp: 60, PageDown: -60 };
@@ -436,7 +443,15 @@ const scrub = $("scrub");
 let scrubbing = null;
 const scrubTime = (e) => { const r = scrub.getBoundingClientRect(); return ((e.clientX - r.left) / r.width) * player.duration; };
 scrub.addEventListener("pointerdown", (e) => { scrub.setPointerCapture(e.pointerId); scrubbing = scrubTime(e); });
-scrub.addEventListener("pointermove", (e) => { if (scrubbing !== null) scrubbing = scrubTime(e); });
+scrub.addEventListener("pointermove", (e) => {
+  if (scrubbing === null) return;
+  if (e.pointerType === "mouse" && !(e.buttons & 1)) { scrubbing = null; return; }  // Released elsewhere.
+  scrubbing = scrubTime(e);
+});
+for (const ev of ["pointercancel", "lostpointercapture"]) scrub.addEventListener(ev, () => {
+  if (scrubbing !== null) seek(scrubbing);
+  scrubbing = null;
+});
 scrub.addEventListener("pointerup", () => { if (scrubbing !== null) seek(scrubbing); scrubbing = null; });
 function drawTransport() {
   requestAnimationFrame(drawTransport);
