@@ -198,6 +198,26 @@ def pieces(start, end):
     return chosen
 
 
+# Holes shorter than this between recordings aren't gaps: a restart or file change loses a
+# second or so, and the streamer's slow sound card makes its hours ~6 s short of audio.
+GAP_TOLERANCE = 15
+
+
+def missing_seconds(start, end, parts):
+    """Seconds of start..end with no recording, counting only holes over GAP_TOLERANCE."""
+    missing, cursor = 0.0, start
+    for rec, a, b in parts:
+        piece_start = rec.start + dt.timedelta(seconds=a)
+        hole = (piece_start - cursor).total_seconds()
+        if hole > GAP_TOLERANCE:
+            missing += hole
+        cursor = max(cursor, rec.start + dt.timedelta(seconds=b))
+    tail = (end - cursor).total_seconds()
+    if tail > GAP_TOLERANCE:
+        missing += tail
+    return missing
+
+
 def coverage(day):
     """Recorded spans from local midnight to 06:00 the next day (so overnight shows are
     visible), as minutes since local midnight."""
@@ -498,6 +518,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(HTTPStatus.NOT_FOUND, {"error": "nothing recorded in that range"})
         self.send_json(HTTPStatus.OK, {
             "duration": (end - start).total_seconds(),
+            "missing": missing_seconds(start, end, parts),
             "segments": [{"id": rec.path.name, "in": round(a, 3), "out": round(b, 3),
                           "at": round((rec.start - start).total_seconds() + a, 3)}
                          for rec, a, b in parts]})
@@ -554,7 +575,7 @@ class Handler(BaseHTTPRequestHandler):
         show = show_for_range(start, end)
         if check_only:
             return self.send_json(HTTPStatus.OK, {
-                "requested": requested, "covered": sum(b - a for _, a, b in parts),
+                "requested": requested, "covered": requested - missing_seconds(start, end, parts),
                 "show": show and {"name": show["name"], "presenter": show["presenter"],
                                   "probable": show["probable"], "schedule": show["schedule"]}})
         if not jobs.acquire(blocking=False):
@@ -562,9 +583,9 @@ class Handler(BaseHTTPRequestHandler):
         proc = tmp = None
         try:
             proc, tmp = ffmpeg_join(parts)
-            covered = sum(b - a for _, a, b in parts)
+            covered = requested - missing_seconds(start, end, parts)
             # Say so in the file name too, so a saved file can't pass as complete.
-            incomplete = "_INCOMPLETE" if covered < requested - 5 else ""
+            incomplete = "_INCOMPLETE" if covered < requested else ""
             if show:
                 # e.g. RBMFM_Strange-Brew-Breakfast_20261105_0700-0900.mp3
                 name = f"RBMFM_{slug(show['name'])}_{start:%Y%m%d_%H%M}-{end:%H%M}{incomplete}.mp3"

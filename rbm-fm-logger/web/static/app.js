@@ -402,8 +402,7 @@ $("audition").addEventListener("click", async () => {
     decks.forEach((el) => { el.pause(); delete el.dataset.id; });
     Object.assign(player, { segs: data.segments, duration: data.duration, seg: -1, deck: 0, startSec: state.start * 60 });
     $("transport").hidden = false;
-    const covered = data.segments.reduce((sum, s) => sum + (s.out - s.in), 0);
-    status(covered < data.duration - 5 ? `Heads up: ${Math.round((data.duration - covered) / 60)} min of this range was never recorded` : "");
+    status(data.missing > 0 ? `Heads up: ${howLong(data.missing)} of this range was never recorded` : "");
     if ("mediaSession" in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({ title: `RBM FM ${state.date} ${hhmm(state.start)}–${hhmm(state.end)}`, artist: "Radio Blue Mountains" });
     }
@@ -481,8 +480,14 @@ function drawTransport() {
 requestAnimationFrame(drawTransport);
 
 function gapNote(check) {
-  const missing = Math.round((check.requested - check.covered) / 60);
-  return `heads up: ${missing} min of that range was never recorded, so the file is shorter`;
+  return `heads up: ${howLong(check.requested - check.covered)} of that range was never recorded, so the file is shorter`;
+}
+// "40 seconds", "12 min", "2 h 5 min"
+function howLong(seconds) {
+  seconds = Math.round(seconds);
+  if (seconds < 90) return `${seconds} seconds`;
+  const m = Math.round(seconds / 60);
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
 }
 
 const needles = [{ v: 0, el: $("vu-l") }, { v: 0, el: $("vu-r") }];
@@ -527,7 +532,7 @@ $("download").addEventListener("click", async () => {
   const btn = $("download");
   try {
     const check = await api(`/api/audio?${rangeQuery()}&check=1`);
-    const gaps = check.covered < check.requested - 5;
+    const gaps = check.covered < check.requested;
     const href = `/api/audio?${rangeQuery()}&download=1`;
     const startDownload = () => {
       const a = document.createElement("a");
