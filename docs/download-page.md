@@ -125,11 +125,13 @@ The page is reached through a **Cloudflare Tunnel**: `cloudflared` on the logger
 - The tunnel token is in `/etc/cloudflared/rbm-tunnel.env` (root only). `cloudflared` comes from Cloudflare's Debian repository, so automatic security updates cover it. It runs sandboxed, with no access to the recordings or configs.
 - The health check alerts if the tunnel service stops, as **"Download page problem: Cloudflare tunnel"**, and checks the public address through it.
 
-**To set up or switch a tunnel:**
-1. In the Cloudflare account for the domain: **Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared**, and name it (e.g. `rbm-logger`). Copy the **token**, the long string after `--token`, from the install screen.
-2. **Public Hostname:** the name, for example `vault` + `rbm.org.au`, with **Service: HTTP**, **URL: `localhost:8081`**. If a DNS record already exists for that name, delete it first; Cloudflare creates its own.
-3. On the logger: copy `web/` to `~/rbm-web`, run `sudo ./tunnel-setup.sh`, and paste the token. Look for "Registered tunnel connection" in the status.
-4. Update `WEB_CHECK_PUBLIC_URL` in `/etc/rbm-web.conf` to the new address, then `sudo systemctl start rbm-web-check`.
+**To set up or switch a tunnel,** one of these (`web/tunnel-setup.sh`, run on the logger with sudo):
+
+- **`sudo ./tunnel-setup.sh --create vault.rbm.org.au`** (recommended). A *locally-managed* tunnel, with no Zero Trust sign-up and no payment card. It prints a link. **The domain's owner** opens it, logs in to Cloudflare in their own browser, and approves the domain. The script then creates the tunnel, points the name at it (replacing any existing record), and keeps only the tunnel's own credentials (`/etc/cloudflared/rbm-tunnel.json`, which can run this one tunnel and nothing else). It **deletes the Cloudflare login certificate** it was given, which could manage the whole zone. Nobody shares a password.
+- **`sudo ./tunnel-setup.sh --credentials <tunnel-id>.json vault.rbm.org.au`**: the same, if the domain's owner would rather run `cloudflared tunnel login`, `cloudflared tunnel create rbm-logger` and `cloudflared tunnel route dns rbm-logger vault.rbm.org.au` on their own computer and send only the `.json` file.
+- **`sudo ./tunnel-setup.sh --token`**: a dashboard tunnel (**Zero Trust → Networks → Tunnels**, public hostname **Service HTTP, URL `localhost:8081`**). Zero Trust asks for a payment method even on its free plan.
+
+Then update `WEB_CHECK_PUBLIC_URL` in `/etc/rbm-web.conf` to the new address and run `sudo systemctl start rbm-web-check`. A locally-managed tunnel doesn't appear in the Zero Trust dashboard. The owner sees and removes it with `cloudflared tunnel list` and `cloudflared tunnel delete`, or by deleting its DNS record (a CNAME to `<id>.cfargotunnel.com`).
 
 Running the script again with a new token switches the logger to that tunnel.
 
