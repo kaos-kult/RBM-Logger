@@ -643,15 +643,36 @@ function updateMarquee() {
   if (info.oldest) facts.push(`THE VAULT GOES BACK TO ${niceDate(info.oldest, { day: "numeric", month: "short", year: "numeric" })}`);
   if (info.hours) facts.push(`${info.hours.toLocaleString("en-AU")} HOURS OF RADIO IN THE VAULT`);
   parts.push(facts[tipIndex % facts.length]);
-  const text = parts.join("   ✦   ");
-  if ($("marquee").textContent !== text) {
-    $("marquee").textContent = text;
-    // Keep a steady, readable speed whatever the length (about 9 characters a second).
-    $("marquee").style.animationDuration = `${Math.max(16, Math.round(text.length / 9))}s`;
-  }
+  // New text waits for the next pass, so it never pops in mid-scroll.
+  marquee.pending = parts.join("   ✦   ");
+  if (!marquee.running) { marquee.running = true; requestAnimationFrame(marqueeFrame); }
 }
-// A different fact or tip each time the marquee goes round.
-$("marquee").addEventListener("animationiteration", () => { tipIndex++; updateMarquee(); });
+// Each pass enters fully from the right and leaves fully off the left, at a steady speed.
+const marquee = { pending: "", x: null, last: 0, running: false };
+const MARQUEE_SPEED = 90;  // pixels per second
+function marqueeFrame(now) {
+  const el = $("marquee"), box = el.parentElement.clientWidth;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    // No scrolling: just show the latest text, updated now and then.
+    if (el.textContent !== marquee.pending) el.textContent = marquee.pending;
+    el.style.transform = "none";
+    marquee.x = null;
+    setTimeout(() => requestAnimationFrame(marqueeFrame), 1000);
+    return;
+  }
+  if (marquee.x === null || marquee.x < -el.offsetWidth) {
+    // Start of a pass: a different tip each time round, then any updated text.
+    if (marquee.x !== null) { tipIndex++; updateMarquee(); }
+    if (marquee.pending && el.textContent !== marquee.pending) el.textContent = marquee.pending;
+    marquee.x = box;
+    marquee.last = now;
+  }
+  const dt = Math.min(0.1, (now - marquee.last) / 1000);  // No leap after a hidden tab.
+  marquee.last = now;
+  marquee.x -= MARQUEE_SPEED * dt;
+  el.style.transform = `translateX(${marquee.x}px)`;
+  requestAnimationFrame(marqueeFrame);
+}
 async function loadInfo() {
   try {
     const d = await api("/api/info");
