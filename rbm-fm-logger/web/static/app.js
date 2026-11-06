@@ -567,13 +567,15 @@ const scrub = $("scrub");
 let scrubbing = null;
 const scrubTime = (e) => {
   const r = scrub.getBoundingClientRect();
-  return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * player.duration;
+  const pad = scrubPad(), inner = r.width - 2 * pad;
+  return Math.max(0, Math.min(1, (e.clientX - r.left - pad) / inner)) * player.duration;
 };
 let draggingHandle = null;
 const HANDLE_GRAB_PX = 12;
 function handleNear(e) {
   if (!trimmed()) return null;
-  const r = scrub.getBoundingClientRect(), px = (v) => r.left + (v / player.duration) * r.width;
+  const r = scrub.getBoundingClientRect(), pad = scrubPad();
+  const px = (v) => r.left + pad + (v / player.duration) * (r.width - 2 * pad);
   const dIn = Math.abs(e.clientX - px(trim.in)), dOut = Math.abs(e.clientX - px(trim.out));
   if (Math.min(dIn, dOut) > HANDLE_GRAB_PX) return null;
   return dIn < dOut ? "in" : "out";
@@ -610,7 +612,8 @@ scrub.addEventListener("keydown", (e) => {
   e.preventDefault();
   setTrim(trim.active, trim[trim.active] + (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 10 : 1));
 });
-const SCISSOR_BAND = 52;  // room above the scrub bar for the trim scissors
+const SCISSOR_BAND = 52;
+const scrubPad = () => (trimmed() ? 28 : 0);  // half the scissors' width, so they always fit  // room above the scrub bar for the trim scissors
 // An open pair of scissors pointing down at the cut line, drawn with paths so it looks
 // the same everywhere: two finger rings at the top, two blades crossing at the pivot in
 // an X, their points opening either side of the line.
@@ -661,7 +664,9 @@ function drawTransport() {
   const dpr = devicePixelRatio || 1, w = scrub.clientWidth, h = scrub.clientHeight;
   if (scrub.width !== w * dpr || scrub.height !== h * dpr) { scrub.width = w * dpr; scrub.height = h * dpr; }
   const g = scrub.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const x = (v) => (v / player.duration) * w;
+  // While trimming, the bar is inset so scissors at the very start or end sit on their
+  // cut line instead of being clipped by the edge.
+  const pad = scrubPad(), x = (v) => pad + (v / player.duration) * (w - 2 * pad);
   // When trimming, the scissors live in a band above the audio bar.
   const top = trimmed() ? SCISSOR_BAND : 0, barTop = top + 8, barH = h - top - 16;
   g.clearRect(0, 0, w, h);
@@ -693,7 +698,7 @@ function drawTransport() {
       g.shadowColor = "#ffcc33"; g.shadowBlur = hot ? 12 : 4;
       g.beginPath(); g.moveTo(hx, top - 4); g.lineTo(hx, h); g.stroke();
       g.setLineDash([]); g.shadowBlur = 0;
-      drawScissors(g, Math.min(w - 20, Math.max(20, hx)), top / 2 + 5, hot);
+      drawScissors(g, hx, top / 2 + 5, hot);
     }
   }
   g.fillStyle = "#fff"; g.shadowColor = "#19f6ff"; g.shadowBlur = 18;
