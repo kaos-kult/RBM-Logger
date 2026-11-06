@@ -354,7 +354,7 @@ function showTrim() {
   $("trim-in").textContent = hms(base + trim.in);
   $("trim-out").textContent = hms(base + trim.out);
   const cut = trim.out - trim.in, whole = cut === trim.len;
-  $("trim-len").textContent = whole ? `${fmt(cut)} · drag the ✂ scissors to trim` : `cut: ${fmt(cut)} (trimmed ${fmt(trim.len - cut)})`;
+  $("trim-len").textContent = whole ? `${fmt(cut)}\ndrag the ✂ to trim` : `cut ${fmt(cut)}\ntrimmed ${fmt(trim.len - cut)}`;
 }
 function status(text, bad = false) { const s = $("status"); s.textContent = text; s.className = bad ? "msg bad" : "msg"; }
 
