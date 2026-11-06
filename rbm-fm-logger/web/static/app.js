@@ -345,6 +345,10 @@ function setTrim(which, value) {
 function showTrim() {
   const on = trimmed();
   $("trim-row").hidden = !on;
+  // DOWNLOAD appears once the current selection has been auditioned (not in live mode).
+  const wasShown = !$("download").hidden;
+  $("download").hidden = !on;
+  if (!on && wasShown && !live.on) status("Selection changed: press ▶ AUDITION to check it, then download.");
   if (!on) return;
   const base = state.start * 60;
   $("trim-in").textContent = hms(base + trim.in);
@@ -511,6 +515,7 @@ async function setPlaying(on) {
 }
 
 $("audition").addEventListener("click", async () => {
+  blip(1400);
   try {
     const data = await api(`/api/segments?${rangeQuery()}`);
     stopLive();
@@ -526,7 +531,8 @@ $("audition").addEventListener("click", async () => {
     }
     await seek(Math.max(0, data.segments[0].at));
     await setPlaying(true);
-    $("transport").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // Bring the whole player into view, down to the DOWNLOAD button.
+    $("download").scrollIntoView({ behavior: "smooth", block: "end" });
   } catch (err) { if (err.message !== "login") status(err.message, true); }
 });
 $("play").addEventListener("click", () => setPlaying(!player.playing));
@@ -604,27 +610,37 @@ scrub.addEventListener("keydown", (e) => {
   e.preventDefault();
   setTrim(trim.active, trim[trim.active] + (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 10 : 1));
 });
-const SCISSOR_BAND = 42;  // room above the scrub bar for the trim scissors
-// A pair of scissors pointing down at the cut line, drawn with paths so it looks the same
-// everywhere: two finger loops at the top, blades crossing at a pivot, tips at the line.
+const SCISSOR_BAND = 52;  // room above the scrub bar for the trim scissors
+// An open pair of scissors pointing down at the cut line, drawn with paths so it looks
+// the same everywhere: two finger rings at the top, two blades crossing at the pivot in
+// an X, their points opening either side of the line.
 function drawScissors(g, cx, cy, hot) {
   g.save();
   g.translate(cx, cy);
-  g.scale(1.55, 1.55);
+  g.scale(1.9, 1.9);
   g.lineCap = "round"; g.lineJoin = "round";
-  g.shadowColor = "#ffcc33"; g.shadowBlur = hot ? 12 : 5;
-  const steel = hot ? "#fff6cf" : "#e9e2ff", loops = hot ? "#ffcc33" : "#ff2bd6";
-  // Blades: from the loops, crossing at the pivot, to the tips just above the bar.
-  g.strokeStyle = steel; g.lineWidth = 2.6;
-  g.beginPath(); g.moveTo(-6, -6); g.lineTo(1.5, 13); g.stroke();
-  g.beginPath(); g.moveTo(6, -6); g.lineTo(-1.5, 13); g.stroke();
-  // Finger loops.
-  g.strokeStyle = loops; g.lineWidth = 2.4;
-  g.beginPath(); g.ellipse(-7.5, -10, 4.2, 4.6, -0.35, 0, Math.PI * 2); g.stroke();
-  g.beginPath(); g.ellipse(7.5, -10, 4.2, 4.6, 0.35, 0, Math.PI * 2); g.stroke();
+  g.shadowColor = "#ffcc33"; g.shadowBlur = hot ? 14 : 6;
+  const steel = hot ? "#fffbe6" : "#ece6ff", edge = "#6b6390", ring = hot ? "#ffcc33" : "#ff2bd6";
+  // Each blade: a shank from its ring to the pivot, then a tapering blade out to its point.
+  for (const side of [-1, 1]) {
+    g.fillStyle = steel; g.strokeStyle = edge; g.lineWidth = 0.8;
+    g.beginPath();
+    g.moveTo(side * 7.5, -7);          // shank top, by the ring
+    g.lineTo(side * 4.5, -7.5);
+    g.lineTo(-side * 1.2, 1.5);         // past the pivot...
+    g.lineTo(-side * 8.5, 15.5);        // ...out to the point on the other side
+    g.lineTo(-side * 6.2, 15);
+    g.lineTo(side * 1.6, 3.2);
+    g.closePath(); g.fill(); g.stroke();
+  }
+  // Finger rings.
+  g.strokeStyle = ring; g.lineWidth = 2.6;
+  for (const side of [-1, 1]) {
+    g.beginPath(); g.ellipse(side * 8, -11.5, 4.6, 4.2, side * 0.5, 0, Math.PI * 2); g.stroke();
+  }
   // Pivot screw.
-  g.shadowBlur = 0; g.fillStyle = "#1a1000";
-  g.beginPath(); g.arc(0, 2.5, 1.8, 0, Math.PI * 2); g.fill();
+  g.shadowBlur = 0; g.fillStyle = "#2a2140"; g.strokeStyle = steel; g.lineWidth = 0.8;
+  g.beginPath(); g.arc(0, 2.2, 2, 0, Math.PI * 2); g.fill(); g.stroke();
   g.restore();
 }
 function drawTransport() {
@@ -677,7 +693,7 @@ function drawTransport() {
       g.shadowColor = "#ffcc33"; g.shadowBlur = hot ? 12 : 4;
       g.beginPath(); g.moveTo(hx, top - 4); g.lineTo(hx, h); g.stroke();
       g.setLineDash([]); g.shadowBlur = 0;
-      drawScissors(g, Math.min(w - 16, Math.max(16, hx)), top / 2 + 5, hot);
+      drawScissors(g, Math.min(w - 20, Math.max(20, hx)), top / 2 + 5, hot);
     }
   }
   g.fillStyle = "#fff"; g.shadowColor = "#19f6ff"; g.shadowBlur = 18;
@@ -835,7 +851,7 @@ const TIPS = [
   "AN END TIME BEFORE THE START MEANS THE NEXT DAY",
   "INSTALL THE VAULT AS AN APP FROM YOUR BROWSER'S MENU",
   "DOWNLOADS ARE NAMED AFTER THE SHOW WHEN THE TIMES MATCH",
-  "LISTEN BEFORE YOU DOWNLOAD WITH ▶ LISTEN",
+  "AUDITION YOUR SELECTION, TRIM IT WITH THE ✂ SCISSORS, THEN DOWNLOAD",
   "ON AN ON-AIR COMPUTER? TAP 🔊 TO MUTE THE SOUND EFFECTS",
   "CLICK OR PRESS ANY KEY TO SKIP THE CASSETTE",
   "RADIO BLUE MOUNTAINS · ON AIR 24/7",
