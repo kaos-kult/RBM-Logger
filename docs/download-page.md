@@ -115,7 +115,27 @@ ssh -t logger 'sudo systemctl start rbm-web-check && journalctl -u rbm-web-check
 - Caddy is the official build with the Cloudflare DNS plugin, installed by `web/caddy-dns-setup.sh`. Debian's own `caddy` package lacks the plugin. It's kept from overwriting this build by a dpkg diversion: Debian's binary is at `/usr/bin/caddy.default`. **After a Caddy security update, re-run `caddy-dns-setup.sh`** to fetch the latest official build.
 - The Cloudflare API token is in `/etc/caddy/cloudflare.env`, readable only by root and Caddy. It has **Zone → DNS → Edit** permission on `kaos.zone` only. If it's revoked or expires, renewals fail and the health check alerts 14 days before the certificate expires. To replace it: create a new token, `sudo nano /etc/caddy/cloudflare.env`, `sudo systemctl restart caddy`.
 
-## Moving to rbm.org.au
+## Cloudflare Tunnel (the way in from now on)
+
+The page is reached through a **Cloudflare Tunnel**: `cloudflared` on the logger (service `rbm-tunnel`) keeps an outgoing connection to Cloudflare, and visitors arrive down it.
+
+- **Nothing at the station is open to the internet.** Once a tunnel is serving a name, the 8443 port forwards on both routers can be deleted.
+- **No certificates to manage for it.** Cloudflare handles HTTPS for visitors. The tunnel hands requests to Caddy's **local-only entrance on port 8081** (plain HTTP, localhost only), which passes on the real visitor's address (`CF-Connecting-IP`) for the password lockout.
+- **No dependency on the station's IP or ISP,** and it keeps working behind carrier-grade NAT.
+- The tunnel token is in `/etc/cloudflared/rbm-tunnel.env` (root only). `cloudflared` comes from Cloudflare's Debian repository, so automatic security updates cover it. It runs sandboxed, with no access to the recordings or configs.
+- The health check alerts if the tunnel service stops, as **"Download page problem: Cloudflare tunnel"**, and checks the public address through it.
+
+**To set up or switch a tunnel:**
+1. In the Cloudflare account for the domain: **Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared**, and name it (e.g. `rbm-logger`). Copy the **token**, the long string after `--token`, from the install screen.
+2. **Public Hostname:** the name, for example `vault` + `rbm.org.au`, with **Service: HTTP**, **URL: `localhost:8081`**. If a DNS record already exists for that name, delete it first; Cloudflare creates its own.
+3. On the logger: copy `web/` to `~/rbm-web`, run `sudo ./tunnel-setup.sh`, and paste the token. Look for "Registered tunnel connection" in the status.
+4. Update `WEB_CHECK_PUBLIC_URL` in `/etc/rbm-web.conf` to the new address, then `sudo systemctl start rbm-web-check`.
+
+Running the script again with a new token switches the logger to that tunnel.
+
+## Moving to rbm.org.au (older notes: port forwarding)
+
+Superseded by the tunnel above, which needs neither the port forwards nor a certificate. Kept for reference.
 
 The planned address is `logs.rbm.org.au`. This needs someone with access to RBM's Cloudflare account. There are two ways.
 

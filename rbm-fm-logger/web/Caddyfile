@@ -28,3 +28,16 @@ rbm.kaos.zone {
 		flush_interval -1
 	}
 }
+
+# Entrance for the Cloudflare Tunnel (cloudflared on this machine). Plain HTTP on
+# localhost only: Cloudflare provides HTTPS to visitors, so no certificate is needed here,
+# whatever public name the tunnel serves (rbm.kaos.zone, vault.rbm.org.au, ...).
+# cloudflared passes on Cloudflare's CF-Connecting-IP, the real visitor, for the lockout.
+http://:8081 {
+	bind 127.0.0.1
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy 127.0.0.1:8080 {
+		header_up X-Real-IP {http.request.header.CF-Connecting-IP}
+		flush_interval -1
+	}
+}

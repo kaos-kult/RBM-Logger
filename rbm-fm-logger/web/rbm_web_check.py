@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import socket
 import ssl
+import subprocess
 import urllib.error
 import urllib.request
 
@@ -56,7 +57,19 @@ def check_public():
             raise RuntimeError(f"HTTP {response.status}")
 
 
+def check_tunnel():
+    """The Cloudflare Tunnel service, if this logger uses one, and its local entrance."""
+    active = subprocess.run(["systemctl", "is-active", "--quiet", "rbm-tunnel"]).returncode == 0
+    if not active:
+        raise RuntimeError("the rbm-tunnel service (cloudflared) isn't running")
+    with urllib.request.urlopen("http://127.0.0.1:8081/", timeout=10) as response:
+        if response.status != 200:
+            raise RuntimeError(f"Caddy's tunnel entrance answered HTTP {response.status}")
+
+
 CHECKS = {"web service": check_local}
+if Path("/etc/systemd/system/rbm-tunnel.service").exists():
+    CHECKS["Cloudflare tunnel"] = check_tunnel
 CHECKS.update({f"HTTPS certificate for {host}": (lambda h=host: check_cert(h)) for host in HOSTS})
 if PUBLIC_URL:
     # Named without the URL, so changing the address keeps this check's history.

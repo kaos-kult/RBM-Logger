@@ -1,0 +1,27 @@
+[Unit]
+Description=Cloudflare Tunnel for the RBM download page
+After=network-online.target caddy.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The tunnel token lives here (TUNNEL_TOKEN=...), readable by root only.
+EnvironmentFile=/etc/cloudflared/rbm-tunnel.env
+ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel --metrics 127.0.0.1:8099 run
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+# Low priority, and sandboxed: it only needs to talk to Cloudflare and to Caddy locally.
+Nice=5
+DynamicUser=yes
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+InaccessiblePaths=-/mnt/storage -/etc/rbm-logger.conf -/etc/rbm-web.conf -/etc/caddy -/var/lib/rbm-logger
+CapabilityBoundingSet=
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target
