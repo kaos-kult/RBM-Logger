@@ -132,8 +132,9 @@ main { max-width: 980px; margin: 18px auto 30px; padding: 0 16px; }
 .sw-show { background: rgba(255,204,51,0.3); border: 1px solid var(--gold); }
 .sw-sel { background: var(--pink); box-shadow: 0 0 8px var(--pink); }
 .sw-offair { background: #5b8cff; box-shadow: 0 0 8px #5b8cff; }
-#legend-offair { white-space: nowrap; }
-#legend-offair[hidden] { display: none; }
+.legend .lg { white-space: nowrap; }
+.legend .lg[hidden] { display: none; }
+.sw-studio-only { background: rgba(57,255,136,0.22); border: 1px solid rgba(57,255,136,0.5); }
 /* STUDIO | OFF-AIR: a two-way console key under the strip. */
 .source-switch { display: flex; justify-content: center; margin: 12px auto 0; width: max-content; padding: 3px;
   border-radius: 999px; border: 1px solid var(--edge); background: rgba(0,0,0,0.45); }

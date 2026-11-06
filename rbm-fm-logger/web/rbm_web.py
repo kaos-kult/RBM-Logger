@@ -259,22 +259,39 @@ def missing_seconds(start, end, parts):
     return missing
 
 
+# Coverage kinds, the third value of each span: where that stretch's audio comes from.
+STUDIO_AUDIO, OFFAIR_AUDIO, STUDIO_ONLY = 0, 1, 2
+
+
 def coverage(day, src=FM):
     """Recorded spans from local midnight to 06:00 the next day (so overnight shows are
-    visible), as [from, to, offair] in minutes since local midnight. offair is 1 where a
-    studio selection would use the FM off-air copy."""
+    visible), as [from, to, kind] in minutes since local midnight. kind is STUDIO_AUDIO or
+    OFFAIR_AUDIO for what this view plays (a studio view fills its holes from off-air), and
+    STUDIO_ONLY, in the off-air view, for stretches only the studio copy has: shown so
+    presenters know to switch, but not played in that view."""
     day_start = dt.datetime.combine(day, dt.time(), TZ)
     day_end = dt.datetime.combine(day + dt.timedelta(days=1), dt.time(6), TZ)
+    parts = [(rec, a, b, OFFAIR_AUDIO if rec.source is FM else STUDIO_AUDIO)
+             for rec, a, b in pieces(day_start, day_end, src)]
+    if src is FM:
+        # Holes in the off-air recording that the studio copy covers.
+        cursor, extra = day_start, []
+        for part in parts + [None]:
+            hole_end = day_end if part is None else part[0].start + dt.timedelta(seconds=part[1])
+            if (hole_end - cursor).total_seconds() > 1:
+                extra += [(r, x, y, STUDIO_ONLY) for r, x, y in source_pieces(cursor, hole_end, STUDIO)]
+            if part is not None:
+                cursor = part[0].start + dt.timedelta(seconds=part[2])
+        parts = sorted(parts + extra, key=lambda p: p[0].start + dt.timedelta(seconds=p[1]))
     spans = []
-    for rec, a, b in pieces(day_start, day_end, src):
+    for rec, a, b, kind in parts:
         lo = (rec.start + dt.timedelta(seconds=a) - day_start).total_seconds() / 60
         hi = (rec.start + dt.timedelta(seconds=b) - day_start).total_seconds() / 60
-        offair = int(src is not FM and rec.source is FM)
-        if spans and lo - spans[-1][1] < 0.5 and spans[-1][2] == offair:
+        if spans and lo - spans[-1][1] < 0.5 and spans[-1][2] == kind:
             spans[-1][1] = hi
         else:
-            spans.append([lo, hi, offair])
-    return [[round(lo, 2), round(hi, 2), off] for lo, hi, off in spans]
+            spans.append([lo, hi, kind])
+    return [[round(lo, 2), round(hi, 2), kind] for lo, hi, kind in spans]
 
 
 # --- Programme guide ---------------------------------------------------------------

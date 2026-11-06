@@ -143,18 +143,19 @@ function drawTimeline() {
   g.fillStyle = "#14040a"; g.fillRect(0, 0, w, h);
   g.strokeStyle = "rgba(255,51,85,0.55)"; g.lineWidth = 2;
   for (let i = -h; i < w; i += 9) { g.beginPath(); g.moveTo(i, h); g.lineTo(i + h, 0); g.stroke(); }
-  // Recorded spans, glowing.
-  g.shadowColor = "#39ff88"; g.shadowBlur = 14;
-  const grad = g.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, "#9dffc6"); grad.addColorStop(0.5, "#39ff88"); grad.addColorStop(1, "#0b7a3c");
-  g.fillStyle = grad;
-  for (const [a, b, offair] of state.spans) if (!offair) g.fillRect(x(a), SHOW_BAND + 4, Math.max(1.5, x(b) - x(a)), h - SHOW_BAND - 10);
-  // Studio view: stretches only the off-air recording has, in blue.
-  g.shadowColor = "#5b8cff";
+  // Recorded spans, coloured by where the audio comes from in both views: studio green,
+  // off-air blue. In the off-air view, stretches only the studio copy has are dim green.
+  const bar = (kind, fill, glow) => {
+    g.fillStyle = fill; g.shadowColor = glow || "transparent"; g.shadowBlur = glow ? 14 : 0;
+    for (const [a, b, k] of state.spans) if (k === kind) g.fillRect(x(a), SHOW_BAND + 4, Math.max(1.5, x(b) - x(a)), h - SHOW_BAND - 10);
+  };
+  const green = g.createLinearGradient(0, 0, 0, h);
+  green.addColorStop(0, "#9dffc6"); green.addColorStop(0.5, "#39ff88"); green.addColorStop(1, "#0b7a3c");
   const blue = g.createLinearGradient(0, 0, 0, h);
   blue.addColorStop(0, "#c4d5ff"); blue.addColorStop(0.5, "#5b8cff"); blue.addColorStop(1, "#1d3a8a");
-  g.fillStyle = blue;
-  for (const [a, b, offair] of state.spans) if (offair) g.fillRect(x(a), SHOW_BAND + 4, Math.max(1.5, x(b) - x(a)), h - SHOW_BAND - 10);
+  bar(2, "rgba(57,255,136,0.22)");
+  bar(0, green, "#39ff88");
+  bar(1, blue, "#5b8cff");
   g.shadowBlur = 0;
   // Programme guide: one labelled block per show along the top. Click one to select it.
   g.font = "600 11px 'Avenir Next', 'Segoe UI', system-ui, sans-serif"; g.textBaseline = "middle";
@@ -316,7 +317,11 @@ function showSource() {
     const on = b.dataset.source === state.source;
     b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on));
   }
-  $("legend-offair").hidden = state.source !== "studio";
+  // The legend names only what this view shows.
+  $("legend-studio").hidden = state.source !== "studio";
+  $("legend-offair-fill").hidden = state.source !== "studio";
+  $("legend-offair").hidden = state.source !== "fm";
+  $("legend-studio-only").hidden = state.source !== "fm";
 }
 for (const b of document.querySelectorAll(".source-switch button")) {
   b.addEventListener("click", () => {
@@ -785,7 +790,7 @@ requestAnimationFrame(drawTransport);
 function offairNote(offair, total) {
   if (!offair || offair < 2) return "";
   return offair >= total - 2 ? "There's no studio copy of this, so it's the off-air recording"
-    : `${howLong(offair)} of this is the off-air recording (no studio copy then, shown in blue)`;
+    : `${howLong(offair)} of this is the off-air recording (no studio copy then: blue on the strip)`;
 }
 function gapNote(check) {
   return `heads up: ${howLong(check.requested - check.covered)} of that range was never recorded, so the file is shorter`;
