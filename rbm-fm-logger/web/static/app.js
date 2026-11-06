@@ -592,20 +592,37 @@ const scrubTime = (e) => {
   return Math.max(0, Math.min(1, (e.clientX - r.left - pad) / inner)) * player.duration;
 };
 let draggingHandle = null;
-const HANDLE_GRAB_PX = 12;
+const HANDLE_GRAB_PX = 26;
+// The strip above the bar holds the scissors: pointing there grabs the nearest pair.
+// Anywhere in the audio bar itself always moves the playhead, even right at a cut.
 function handleNear(e) {
   if (!trimmed()) return null;
-  const r = scrub.getBoundingClientRect(), pad = scrubPad();
-  const px = (v) => r.left + pad + (v / player.duration) * (r.width - 2 * pad);
+  const r = scrub.getBoundingClientRect();
+  if (e.clientY - r.top > SCISSOR_BAND) return null;
+  const pad = scrubPad(), px = (v) => r.left + pad + (v / player.duration) * (r.width - 2 * pad);
   const dIn = Math.abs(e.clientX - px(trim.in)), dOut = Math.abs(e.clientX - px(trim.out));
   if (Math.min(dIn, dOut) > HANDLE_GRAB_PX) return null;
-  return dIn < dOut ? "in" : "out";
+  return dIn <= dOut ? "in" : "out";
+}
+// While dragging in the bar, the audio follows (a few times a second), so you can scrub
+// to the right spot by ear. Live mode only seeks on release: each seek opens a new stream.
+let lastScrubSeek = 0;
+function scrubTo(t, final) {
+  scrubbing = t;
+  if (final) {
+    // The seek on release must happen even if a scrub seek is still loading.
+    const go = () => (player.busy ? setTimeout(go, 40) : seek(t).finally(() => { if (scrubbing === t) scrubbing = null; }));
+    go();
+    return;
+  }
+  if (!live.on && performance.now() - lastScrubSeek > 200) { lastScrubSeek = performance.now(); seek(t); }
 }
 scrub.addEventListener("pointerdown", (e) => {
   scrub.setPointerCapture(e.pointerId);
   draggingHandle = handleNear(e);
   if (draggingHandle) { trim.active = draggingHandle; return; }
-  scrubbing = scrubTime(e);
+  lastScrubSeek = 0;
+  scrubTo(scrubTime(e), false);
 });
 scrub.addEventListener("pointermove", (e) => {
   if (draggingHandle) {
@@ -615,19 +632,17 @@ scrub.addEventListener("pointermove", (e) => {
   }
   scrub.style.cursor = handleNear(e) ? "ew-resize" : "pointer";
   if (scrubbing === null) return;
-  if (e.pointerType === "mouse" && !(e.buttons & 1)) { scrubbing = null; return; }  // Released elsewhere.
-  scrubbing = scrubTime(e);
+  if (e.pointerType === "mouse" && !(e.buttons & 1)) { scrubTo(scrubbing, true); return; }  // Released elsewhere.
+  scrubTo(scrubTime(e), false);
+});
+scrub.addEventListener("pointerup", (e) => {
+  if (draggingHandle) { blip(1500); draggingHandle = null; return; }
+  if (scrubbing !== null) scrubTo(scrubTime(e), true);
 });
 for (const ev of ["pointercancel", "lostpointercapture"]) scrub.addEventListener(ev, () => {
-  if (scrubbing !== null) seek(scrubbing);
-  scrubbing = null;
+  draggingHandle = null;
+  if (scrubbing !== null) scrubTo(scrubbing, true);
 });
-scrub.addEventListener("pointerup", () => {
-  if (draggingHandle) { blip(1500); draggingHandle = null; return; }
-  if (scrubbing !== null) seek(scrubbing);
-  scrubbing = null;
-});
-for (const ev of ["pointercancel", "lostpointercapture"]) scrub.addEventListener(ev, () => { draggingHandle = null; });
 scrub.addEventListener("keydown", (e) => {
   if (!trimmed() || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
   e.preventDefault();
