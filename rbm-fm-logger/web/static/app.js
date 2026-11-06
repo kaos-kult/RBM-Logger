@@ -429,6 +429,27 @@ $("hear-in").addEventListener("click", async () => { await seek(trim.in); await 
 // The last 5 seconds before the cut; playback stops at OUT by itself.
 $("hear-out").addEventListener("click", async () => { await seek(Math.max(trim.in, trim.out - 5)); await setPlaying(true); });
 $("trim-reset").addEventListener("click", () => { trim.in = 0; trim.out = trim.len; showTrim(); });
+// Snap a pair of scissors to the playhead: play through, and cut where you hear it.
+function cutHere(which) {
+  if (!trimmed()) return;
+  const t = position(), other = which === "in" ? trim.out : trim.in;
+  if ((which === "in" && t >= other - 1) || (which === "out" && t <= other + 1)) {
+    status(which === "in" ? "IN must be before OUT. Move OUT later first, or pick an earlier spot."
+                          : "OUT must be after IN. Move IN earlier first, or pick a later spot.", true);
+    return;
+  }
+  setTrim(which, t);
+  blip(1500); blip(2300);
+  status(`${which.toUpperCase()} set to ${hms(state.start * 60 + trim[which])}.`);
+}
+$("in-here").addEventListener("click", () => cutHere("in"));
+$("out-here").addEventListener("click", () => cutHere("out"));
+addEventListener("keydown", (e) => {
+  const typing = e.target instanceof Element && e.target.closest("input, textarea");
+  if (!trimmed() || typing || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "i" || e.key === "I") { e.preventDefault(); cutHere("in"); }
+  if (e.key === "o" || e.key === "O") { e.preventDefault(); cutHere("out"); }
+});
 // Stop at OUT, so what you hear ends where the download will.
 function checkTrimEnd() {
   if (trimmed() && player.playing && trim.out < trim.len && position() >= trim.out - 0.05) {
